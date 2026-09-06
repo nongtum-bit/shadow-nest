@@ -208,12 +208,14 @@ export class ShadowNestGame {
     this.weaponScene.add(this.weaponCam);
     this.viewRoot.position.set(0.28, -0.24, -0.55);
 
-    this.isTouch = window.matchMedia("(pointer: coarse)").matches;
+    this.isTouch = window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0;
     this.input.attach(canvas);
     this.bindLock();
     this.fit();
     this.onResize = () => this.fit();
     window.addEventListener("resize", this.onResize);
+    window.addEventListener("orientationchange", this.onResize);
+    window.visualViewport?.addEventListener("resize", this.onResize);
   }
 
   start(levelIndex: number) {
@@ -279,7 +281,11 @@ export class ShadowNestGame {
     this.input.detach(this.canvas);
     this.disposeWorld();
     this.renderer.dispose();
-    if (this.onResize) window.removeEventListener("resize", this.onResize);
+    if (this.onResize) {
+      window.removeEventListener("resize", this.onResize);
+      window.removeEventListener("orientationchange", this.onResize);
+      window.visualViewport?.removeEventListener("resize", this.onResize);
+    }
     this.unsubLock?.();
     if (window.__controlsTest) delete window.__controlsTest;
   }

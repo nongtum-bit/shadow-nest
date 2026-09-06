@@ -4,28 +4,6 @@ import type { ShadowNestGame } from "@/game/engine";
 import { LEVELS, useGame } from "@/game/store";
 import type { HudSnapshot } from "@/game/types";
 
-function useLandscape() {
-  const [land, setLand] = useState(() =>
-    typeof window === "undefined" ? true : window.innerWidth >= window.innerHeight,
-  );
-  useEffect(() => {
-    const apply = () => setLand(window.innerWidth >= window.innerHeight);
-    apply();
-    window.addEventListener("resize", apply);
-    window.addEventListener("orientationchange", apply);
-    return () => {
-      window.removeEventListener("resize", apply);
-      window.removeEventListener("orientationchange", apply);
-    };
-  }, []);
-  return land;
-}
-
-function lockLandscape() {
-  const o = screen.orientation as ScreenOrientation & { lock?: (mode: string) => Promise<void> };
-  void o.lock?.("landscape").catch(() => undefined);
-}
-
 export function GameApp() {
   const screen = useGame((s) => s.screen);
   useEffect(() => {
@@ -138,14 +116,7 @@ function MenuView() {
           </ul>
           <p className="mt-4 text-sm text-accent">{L.nestHint}</p>
           <div className="mt-8">
-            <Primary
-              onClick={() => {
-                lockLandscape();
-                deploy();
-              }}
-            >
-              Deploy
-            </Primary>
+            <Primary onClick={deploy}>Deploy</Primary>
           </div>
         </main>
       )}
@@ -159,7 +130,7 @@ function MenuView() {
             <Row k="1 / 2" v="สลับปืนสั้นเก็บเสียง กับสไนเปอร์" />
             <Row k="R" v="บรรจุกระสุน · E ปิดเงียบจากด้านหลัง / เก็บแฟ้ม" />
             <Row k="จุดซุ่ม" v="ขึ้นหอหรือดาดฟ้า ย่อหลังกำแพง แล้วเล็งหัว" />
-            <Row k="มือถือ" v="หมุนจอเป็นแนวนอน · จอยซ้าย เล็งขวา ปุ่มยิงขวาล่าง" />
+            <Row k="มือถือ" v="จอยซ้ายเดิน · ลากขวาเล็ง · ปุ่มยิงขวาล่าง" />
           </dl>
           <div className="mt-8">
             <Primary onClick={() => setScreen("missions")}>เลือกพื้นที่</Primary>
@@ -191,11 +162,9 @@ function PlayView() {
   const setScreen = useGame((s) => s.setScreen);
   const [touch, setTouch] = useState(false);
   const [session, setSession] = useState(0);
-  const landscape = useLandscape();
 
   useEffect(() => {
-    setTouch(window.matchMedia("(pointer: coarse)").matches);
-    lockLandscape();
+    setTouch(window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0);
   }, []);
 
   useEffect(() => {
@@ -260,8 +229,7 @@ function PlayView() {
           </span>
         </button>
       )}
-      {touch && screen === "playing" && !landscape && <RotatePrompt />}
-      {touch && screen === "playing" && landscape && <TouchPad gameRef={gameRef} />}
+      {touch && screen === "playing" && <TouchPad gameRef={gameRef} />}
       {(screen === "paused" || screen === "win" || screen === "lose") && (
         <div className="absolute inset-0 z-30 flex items-center justify-center bg-bg/70 px-5">
           <div className="panel w-full max-w-md rounded-xl p-6">
@@ -513,19 +481,6 @@ function Scope() {
       <div className="absolute left-1/2 top-[calc(50%-18vmin)] h-[12vmin] w-px bg-fg/50" />
       <div className="absolute left-1/2 bottom-[calc(50%-18vmin)] h-[12vmin] w-px bg-fg/50" />
       <div className="absolute top-1/2 left-1/2 size-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-danger" />
-    </div>
-  );
-}
-
-function RotatePrompt() {
-  useEffect(() => {
-    lockLandscape();
-  }, []);
-  return (
-    <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-bg/80 px-8 text-center">
-      <div className="mb-4 size-16 rounded-2xl border border-fg/25" style={{ transform: "rotate(90deg)" }} />
-      <p className="font-display text-3xl font-semibold tracking-wide">หมุนจอเป็นแนวนอน</p>
-      <p className="mt-2 max-w-xs text-sm text-muted">เกมนี้เล่นแนวนอน จะได้เล็งและซุ่มได้ชัด ไม่ทับปุ่ม</p>
     </div>
   );
 }
