@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Crosshair, Volume2, VolumeX } from "lucide-react";
 import type { ShadowNestGame } from "@/game/engine";
 import { LEVELS, useGame } from "@/game/store";
@@ -8,43 +8,8 @@ function isTouchDevice() {
   return window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0;
 }
 
-function useStageBox() {
-  const [box, setBox] = useState<{ force: boolean; w: number; h: number }>(() => ({
-    force: false,
-    w: typeof window === "undefined" ? 1280 : window.innerWidth,
-    h: typeof window === "undefined" ? 720 : window.innerHeight,
-  }));
-
-  useEffect(() => {
-    const apply = () => {
-      const vv = window.visualViewport;
-      const pw = Math.round(vv?.width ?? window.innerWidth);
-      const ph = Math.round(vv?.height ?? window.innerHeight);
-      const touch = isTouchDevice();
-      const portrait = ph > pw;
-      if (touch && portrait) setBox({ force: true, w: ph, h: pw });
-      else setBox({ force: false, w: pw, h: ph });
-    };
-    apply();
-    window.addEventListener("resize", apply);
-    window.addEventListener("orientationchange", apply);
-    window.visualViewport?.addEventListener("resize", apply);
-    return () => {
-      window.removeEventListener("resize", apply);
-      window.removeEventListener("orientationchange", apply);
-      window.visualViewport?.removeEventListener("resize", apply);
-    };
-  }, []);
-
-  return box;
-}
-
 export function GameApp() {
   const screen = useGame((s) => s.screen);
-  const box = useStageBox();
-  const innerRef = useRef<HTMLDivElement>(null);
-  const hold = useRef<{ el: HTMLElement; px: number; py: number; lx: number; ly: number } | null>(null);
-
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
     if (q.has("qa")) {
@@ -52,114 +17,16 @@ export function GameApp() {
       useGame.setState({ mission: i, screen: "playing" });
     }
   }, []);
-
-  const pick = (x: number, y: number) => {
-    const root = innerRef.current;
-    if (!root) return null;
-    const nodes = root.querySelectorAll<HTMLElement>("button, [data-hit]");
-    for (let i = nodes.length - 1; i >= 0; i--) {
-      const el = nodes[i]!;
-      const r = el.getBoundingClientRect();
-      if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return el;
-    }
-    return null;
-  };
-
-  const applyHit = (el: HTMLElement, type: "down" | "move" | "up", x: number, y: number) => {
-    const hit = el.dataset.hit;
-    const g = liveGame.current;
-    if (hit === "stick" && g) {
-      const r = el.getBoundingClientRect();
-      const px = x - (r.left + r.width / 2);
-      const py = y - (r.top + r.height / 2);
-      let mx = py / 42;
-      let my = -px / 42;
-      const m = Math.hypot(mx, my) || 1;
-      const k = Math.min(1, m);
-      g.input.touchMoveX = (mx / m) * k;
-      g.input.touchMoveY = (my / m) * k;
-      if (type === "up") {
-        g.input.touchMoveX = 0;
-        g.input.touchMoveY = 0;
-      }
-      return;
-    }
-    if (hit === "look" && g) {
-      if (type === "down") {
-        hold.current = { el, px: x, py: y, lx: x, ly: y };
-      } else if (type === "move" && hold.current) {
-        const dx = x - hold.current.lx;
-        const dy = y - hold.current.ly;
-        g.input.touchLookX += dy;
-        g.input.touchLookY += -dx;
-        hold.current.lx = x;
-        hold.current.ly = y;
-      }
-      return;
-    }
-    if (g && hit === "fire") g.input.touchFire = type !== "up";
-    if (g && hit === "ads") g.input.touchAds = type !== "up";
-    if (g && hit === "crouch") g.input.touchCrouch = type !== "up";
-    if (g && hit === "jump" && type === "down") g.input.touchJump = true;
-    if (g && hit === "weapon" && type === "down") g.input.touchWeapon = true;
-    if (g && hit === "interact" && type === "down") g.input.touchInteract = true;
-    if (!hit && el.tagName === "BUTTON" && type === "up") el.click();
-  };
-
-  const onProxyPointerDown = (e: ReactPointerEvent) => {
-    if (!box.force) return;
-    e.preventDefault();
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    const el = pick(e.clientX, e.clientY);
-    if (!el) return;
-    hold.current = { el, px: e.clientX, py: e.clientY, lx: e.clientX, ly: e.clientY };
-    applyHit(el, "down", e.clientX, e.clientY);
-  };
-  const onProxyPointerMove = (e: ReactPointerEvent) => {
-    if (!box.force || !hold.current) return;
-    applyHit(hold.current.el, "move", e.clientX, e.clientY);
-  };
-  const onProxyPointerUp = (e: ReactPointerEvent) => {
-    if (!box.force) return;
-    const h = hold.current;
-    hold.current = null;
-    if (h) applyHit(h.el, "up", e.clientX, e.clientY);
-  };
-
-  const innerStyle = box.force
-    ? {
-        position: "absolute" as const,
-        top: 0,
-        left: box.h,
-        width: box.w,
-        height: box.h,
-        transform: "rotate(90deg)",
-        transformOrigin: "top left",
-        pointerEvents: "none" as const,
-      }
-    : { position: "relative" as const, height: "100dvh", width: "100%" };
-
   return (
-    <div
-      className="overflow-hidden bg-bg text-fg"
-      style={{ position: "fixed", inset: 0, touchAction: "none" }}
-      onPointerDown={box.force ? onProxyPointerDown : undefined}
-      onPointerMove={box.force ? onProxyPointerMove : undefined}
-      onPointerUp={box.force ? onProxyPointerUp : undefined}
-      onPointerCancel={box.force ? onProxyPointerUp : undefined}
-    >
-      <div ref={innerRef} className="h-full w-full overflow-hidden bg-bg text-fg" style={innerStyle}>
-        {screen === "playing" || screen === "paused" || screen === "win" || screen === "lose" ? (
-          <PlayView />
-        ) : (
-          <MenuView />
-        )}
-      </div>
+    <div className="relative h-dvh w-full overflow-hidden bg-bg text-fg">
+      {screen === "playing" || screen === "paused" || screen === "win" || screen === "lose" ? (
+        <PlayView />
+      ) : (
+        <MenuView />
+      )}
     </div>
   );
 }
-
-const liveGame: { current: ShadowNestGame | null } = { current: null };
 
 function MenuView() {
   const screen = useGame((s) => s.screen);
@@ -199,31 +66,35 @@ function MenuView() {
       )}
 
       {screen === "missions" && (
-        <main className="relative z-10 mx-auto flex w-full max-w-3xl flex-1 flex-col px-5 py-6 sm:px-8">
+        <main className="relative z-10 mx-auto flex w-full max-w-3xl flex-1 flex-col overflow-y-auto px-5 py-5 sm:px-8">
           <button
             type="button"
             onClick={() => setScreen("title")}
-            className="mb-5 self-start text-sm text-muted hover:text-fg"
+            className="mb-4 self-start text-sm text-muted hover:text-fg"
           >
             กลับ
           </button>
-          <h2 className="font-display text-4xl font-semibold tracking-tight">เลือกพื้นที่</h2>
-          <p className="mt-1 text-sm text-muted">สามฐาน ต่างภูมิประเทศ จุดซุ่มไม่ซ้ำกัน</p>
-          <div className="mt-6 grid gap-3 sm:grid-cols-3">
+          <h2 className="font-display text-3xl font-semibold tracking-tight">เลือกด่านแล้วเล่นเลย</h2>
+          <p className="mt-1 text-sm text-muted">แตะการ์ดเพื่อเข้าเกม 3D</p>
+          <div className="mt-5 grid gap-3">
             {LEVELS.map((lv, i) => (
               <button
                 key={lv.id}
                 type="button"
-                onClick={() => selectMission(i)}
+                onClick={() => {
+                  selectMission(i);
+                  deploy();
+                }}
                 className="panel rounded-lg p-4 text-left transition-transform duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:scale-[1.01] active:scale-[0.98]"
               >
                 <p className="font-display text-xs tracking-[0.22em] text-accent uppercase">
                   0{i + 1} {lv.codename}
                 </p>
-                <h3 className="mt-2 font-display text-2xl font-semibold">{lv.nameTh}</h3>
+                <h3 className="mt-1 font-display text-2xl font-semibold">{lv.nameTh}</h3>
                 <p className="mt-1 text-sm text-muted">{lv.place}</p>
+                <p className="mt-3 font-display text-sm tracking-wide text-accent">แตะเพื่อเข้าเกม →</p>
                 {best[lv.id] && (
-                  <p className="mt-3 text-xs tracking-widest text-ok uppercase">{best[lv.id]}</p>
+                  <p className="mt-2 text-xs tracking-widest text-ok uppercase">{best[lv.id]}</p>
                 )}
               </button>
             ))}
@@ -232,28 +103,25 @@ function MenuView() {
       )}
 
       {screen === "briefing" && (
-        <main className="relative z-10 mx-auto flex w-full max-w-lg flex-1 flex-col justify-center px-5 py-8 sm:px-8">
+        <main className="relative z-10 mx-auto flex w-full max-w-lg flex-1 flex-col px-5 py-5 sm:px-8">
           <button
             type="button"
             onClick={() => setScreen("missions")}
-            className="mb-5 self-start text-sm text-muted hover:text-fg"
+            className="mb-4 self-start text-sm text-muted hover:text-fg"
           >
             เลือกด่านอื่น
           </button>
           <p className="font-display text-sm tracking-[0.28em] text-accent uppercase">{L.codename}</p>
-          <h2 className="mt-1 font-display text-4xl font-semibold">{L.nameTh}</h2>
-          <p className="mt-3 text-sm leading-relaxed text-muted">{L.briefing}</p>
-          <ul className="mt-5 space-y-2 text-sm">
-            {L.objectives.map((o) => (
-              <li key={o} className="flex gap-2">
-                <span className="mt-1 size-1.5 shrink-0 rounded-full bg-accent" />
-                <span>{o}</span>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-4 text-sm text-accent">{L.nestHint}</p>
-          <div className="mt-8">
-            <Primary onClick={deploy}>Deploy</Primary>
+          <h2 className="mt-1 font-display text-3xl font-semibold">{L.nameTh}</h2>
+          <p className="mt-2 text-sm leading-relaxed text-muted">{L.briefing}</p>
+          <div className="mt-auto pt-6">
+            <Primary
+              onClick={() => {
+                deploy();
+              }}
+            >
+              เข้าเกม
+            </Primary>
           </div>
         </main>
       )}
@@ -321,13 +189,11 @@ function PlayView() {
       game.start(mission);
       game.audio.setMuted(useGame.getState().muted);
       gameRef.current = game;
-      liveGame.current = game;
     });
     return () => {
       disposed = true;
       game?.dispose();
       gameRef.current = null;
-      liveGame.current = null;
     };
   }, [mission, session, lose, pause, setHud, setLocked, win]);
 
