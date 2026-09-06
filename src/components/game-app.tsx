@@ -45,7 +45,7 @@ export function GameApp() {
   const screen = useGame((s) => s.screen);
   const land = useForceLand();
   const innerRef = useRef<HTMLDivElement>(null);
-  const hold = useRef<{ el: HTMLElement; lx: number; ly: number } | null>(null);
+  const hold = useRef<{ el: HTMLElement; lx: number; ly: number; id: number } | null>(null);
 
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
@@ -71,26 +71,41 @@ export function GameApp() {
     const hit = el.dataset.hit;
     const g = liveGame.current;
     if (hit === "stick" && g) {
-      const r = el.getBoundingClientRect();
-      const px = x - (r.left + r.width / 2);
-      const py = y - (r.top + r.height / 2);
-      let mx = py / 34;
-      let my = -px / 34;
-      const m = Math.hypot(mx, my) || 1;
-      const k = Math.min(1, m);
       if (type === "up") {
         g.input.touchMoveX = 0;
         g.input.touchMoveY = 0;
-      } else {
-        g.input.touchMoveX = (mx / m) * k;
-        g.input.touchMoveY = (my / m) * k;
+        return;
       }
+      const r = el.getBoundingClientRect();
+      const px = x - (r.left + r.width / 2);
+      const py = y - (r.top + r.height / 2);
+      let mx = py / 38;
+      let my = -px / 38;
+      const m = Math.hypot(mx, my);
+      if (m < 0.14) {
+        g.input.touchMoveX = 0;
+        g.input.touchMoveY = 0;
+        return;
+      }
+      const k = Math.min(1, m);
+      g.input.touchMoveX = (mx / m) * k;
+      g.input.touchMoveY = (my / m) * k;
       return;
     }
     if (hit === "look" && g) {
       if (type === "move" && hold.current) {
-        g.input.touchLookX += y - hold.current.ly;
-        g.input.touchLookY += -(x - hold.current.lx);
+        let dx = x - hold.current.lx;
+        let dy = y - hold.current.ly;
+        const jump = Math.hypot(dx, dy);
+        if (jump > 64) {
+          hold.current.lx = x;
+          hold.current.ly = y;
+          return;
+        }
+        dx = Math.max(-18, Math.min(18, dx));
+        dy = Math.max(-18, Math.min(18, dy));
+        g.input.touchLookX += dy;
+        g.input.touchLookY += -dx;
         hold.current.lx = x;
         hold.current.ly = y;
       }
@@ -107,22 +122,23 @@ export function GameApp() {
 
   const onDown = (e: ReactPointerEvent) => {
     if (!land.force) return;
+    if (hold.current) return;
     e.preventDefault();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     const el = pick(e.clientX, e.clientY);
     if (!el) return;
-    hold.current = { el, lx: e.clientX, ly: e.clientY };
+    hold.current = { el, lx: e.clientX, ly: e.clientY, id: e.pointerId };
     applyHit(el, "down", e.clientX, e.clientY);
   };
   const onMove = (e: ReactPointerEvent) => {
-    if (!land.force || !hold.current) return;
+    if (!land.force || !hold.current || e.pointerId !== hold.current.id) return;
     applyHit(hold.current.el, "move", e.clientX, e.clientY);
   };
   const onUp = (e: ReactPointerEvent) => {
-    if (!land.force) return;
+    if (!land.force || !hold.current || e.pointerId !== hold.current.id) return;
     const h = hold.current;
     hold.current = null;
-    if (h) applyHit(h.el, "up", e.clientX, e.clientY);
+    applyHit(h.el, "up", e.clientX, e.clientY);
   };
 
   const innerStyle = land.force
@@ -258,7 +274,7 @@ function MenuView() {
                 <Row k="ลากกลางจอ" v="เล็ง" />
                 <Row k="ปุ่มขาว" v="ยิง" />
                 <Row k="เล็ง / ย่อ" v="ซุ่มหลังกำแพงแล้วส่องกล้อง" />
-                <Row k="E" v="ปิดเงียบจากหลัง / เก็บแฟ้ม" />
+                <Row k="E" v="เปิดลัง / ปิดเงียบ / เก็บแฟ้ม" />
                 <Row k="เป้าหมาย" v="กำจัด HVT แล้วเข้าโซนถอนตัว" />
               </dl>
             </div>
@@ -458,9 +474,9 @@ function Hud({ hud, compact }: { hud: HudSnapshot; compact: boolean }) {
         />
       )}
       {compact ? <HudCompact hud={hud} /> : <HudDesktop hud={hud} />}
-      {(hud.takedownReady || hud.interactReady) && (
-        <div className="absolute bottom-[28%] left-1/2 -translate-x-1/2 hud-chip px-3 py-1.5 text-sm">
-          {hud.takedownReady ? "E ปิดเงียบ" : "E เก็บแฟ้ม"}
+      {(hud.takedownReady || hud.interactReady || hud.toast) && (
+        <div className="absolute bottom-[30%] left-1/2 -translate-x-1/2 hud-chip px-3 py-1.5 text-sm">
+          {hud.toast || (hud.takedownReady ? "E ปิดเงียบ" : hud.interactHint || "E เก็บของ")}
         </div>
       )}
     </div>
@@ -658,8 +674,8 @@ function TouchPad({ gameRef }: { gameRef: RefObject<ShadowNestGame | null> }) {
           if (e.pointerId !== lookId.current) return;
           const g = gameRef.current;
           if (!g) return;
-          g.input.touchLookX += e.clientX - last.current.x;
-          g.input.touchLookY += e.clientY - last.current.y;
+          g.input.touchLookX += Math.max(-18, Math.min(18, e.clientX - last.current.x));
+          g.input.touchLookY += Math.max(-18, Math.min(18, e.clientY - last.current.y));
           last.current = { x: e.clientX, y: e.clientY };
         }}
         onPointerUp={() => {

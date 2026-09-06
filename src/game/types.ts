@@ -1,5 +1,9 @@
 export type Vec2 = { x: number; z: number };
 
+export type LootKind = "ammo" | "med" | "intel";
+
+export type LootSpec = { x: number; z: number; kind: LootKind };
+
 export type BoxSpec = {
   x: number;
   y: number;
@@ -49,6 +53,7 @@ export type LevelDef = {
   spawn: { x: number; y: number; z: number; yaw: number };
   extract: { x: number; z: number; r: number };
   intel: { x: number; y: number; z: number }[];
+  loot: LootSpec[];
   boxes: BoxSpec[];
   lights: LightSpec[];
   enemies: EnemySpec[];
@@ -84,6 +89,8 @@ export type HudSnapshot = {
   objective: string;
   takedownReady: boolean;
   interactReady: boolean;
+  interactHint: string;
+  toast: string;
   ammoName: string;
   ammoHint: string;
 };

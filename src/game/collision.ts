@@ -101,7 +101,8 @@ export function losBlocked(
   return false;
 }
 
-const STEP_UP = 0.48;
+const STEP_UP = 0.42;
+const SKIN = 0.012;
 
 export function moveCharacter(
   pos: { x: number; y: number; z: number },
@@ -114,53 +115,38 @@ export function moveCharacter(
 ): boolean {
   const prevY = pos.y;
   vel.y -= gravity * dt;
-  if (vel.y < -28) vel.y = -28;
+  if (vel.y < -24) vel.y = -24;
 
   pos.x += vel.x * dt;
-  resolveAxis(pos, vel, radius, height, colliders, "x");
-
+  slideWalls(pos, vel, radius, height, colliders, "x");
   pos.z += vel.z * dt;
-  resolveAxis(pos, vel, radius, height, colliders, "z");
+  slideWalls(pos, vel, radius, height, colliders, "z");
 
   pos.y += vel.y * dt;
-  let onGround = false;
+  const onGround = resolveVertical(pos, vel, radius, height, colliders, prevY);
+  unstick(pos, radius, height, colliders);
 
-  const minX = pos.x - radius;
-  const maxX = pos.x + radius;
-  const minZ = pos.z - radius;
-  const maxZ = pos.z + radius;
-
-  for (const c of colliders) {
-    if (!aabbOverlap(minX, pos.y, minZ, maxX, pos.y + height, maxZ, c)) continue;
-    const overlapY = Math.min(pos.y + height, c.maxY) - Math.max(pos.y, c.minY);
-    if (overlapY <= 0) continue;
-    if (vel.y <= 0 && prevY + 0.02 >= c.maxY - 0.04) {
-      pos.y = c.maxY;
-      vel.y = 0;
-      onGround = true;
-    } else if (vel.y > 0 && prevY + height <= c.minY + 0.04) {
-      pos.y = c.minY - height - 0.001;
-      vel.y = 0;
-    } else if (pos.y + height * 0.5 > c.maxY) {
-      pos.y = c.maxY;
-      vel.y = 0;
-      onGround = true;
-    } else {
-      pos.y = c.minY - height - 0.001;
-      vel.y = 0;
-    }
+  if (!Number.isFinite(pos.x) || !Number.isFinite(pos.z) || !Number.isFinite(pos.y)) {
+    pos.x = 0;
+    pos.y = 0.4;
+    pos.z = 8;
+    vel.x = vel.y = vel.z = 0;
+    return true;
   }
-
   if (pos.y < -1) {
-    pos.y = 0;
+    pos.y = 0.2;
     vel.y = 0;
-    onGround = true;
+    return true;
   }
-
   return onGround;
 }
 
-function resolveAxis(
+function isFloor(c: Collider, posY: number) {
+  const thick = c.maxY - c.minY;
+  return thick <= 0.55 || c.maxY <= posY + STEP_UP + 0.08;
+}
+
+function slideWalls(
   pos: { x: number; y: number; z: number },
   vel: { x: number; y: number; z: number },
   radius: number,
@@ -168,17 +154,17 @@ function resolveAxis(
   colliders: Collider[],
   axis: "x" | "z",
 ) {
-  const minX = () => pos.x - radius;
-  const maxX = () => pos.x + radius;
-  const minZ = () => pos.z - radius;
-  const maxZ = () => pos.z + radius;
-
   for (const c of colliders) {
-    if (!aabbOverlap(minX(), pos.y + 0.08, minZ(), maxX(), pos.y + height, maxZ(), c)) continue;
+    if (isFloor(c, pos.y)) continue;
+    if (c.minY > pos.y + height - 0.05) continue;
+    if (c.maxY < pos.y + 0.18) continue;
+    if (!aabbOverlap(pos.x - radius, pos.y + 0.12, pos.z - radius, pos.x + radius, pos.y + height, pos.z + radius, c)) {
+      continue;
+    }
 
     const step = c.maxY - pos.y;
     if (step > 0.02 && step <= STEP_UP) {
-      const raised = pos.y + step + 0.02;
+      const raised = c.maxY + 0.01;
       if (!blockedAt(pos.x, raised, pos.z, radius, height, colliders, c)) {
         pos.y = raised;
         continue;
@@ -186,14 +172,71 @@ function resolveAxis(
     }
 
     if (axis === "x") {
-      if (pos.x < (c.minX + c.maxX) * 0.5) pos.x = c.minX - radius - 0.001;
-      else pos.x = c.maxX + radius + 0.001;
+      const mid = (c.minX + c.maxX) * 0.5;
+      pos.x = pos.x < mid ? c.minX - radius - SKIN : c.maxX + radius + SKIN;
       vel.x = 0;
     } else {
-      if (pos.z < (c.minZ + c.maxZ) * 0.5) pos.z = c.minZ - radius - 0.001;
-      else pos.z = c.maxZ + radius + 0.001;
+      const mid = (c.minZ + c.maxZ) * 0.5;
+      pos.z = pos.z < mid ? c.minZ - radius - SKIN : c.maxZ + radius + SKIN;
       vel.z = 0;
     }
+  }
+}
+
+function resolveVertical(
+  pos: { x: number; y: number; z: number },
+  vel: { x: number; y: number; z: number },
+  radius: number,
+  height: number,
+  colliders: Collider[],
+  prevY: number,
+): boolean {
+  let onGround = false;
+  for (const c of colliders) {
+    if (pos.x + radius <= c.minX || pos.x - radius >= c.maxX) continue;
+    if (pos.z + radius <= c.minZ || pos.z - radius >= c.maxZ) continue;
+
+    if (vel.y <= 0 && prevY >= c.maxY - 0.16 && pos.y <= c.maxY + 0.04) {
+      pos.y = c.maxY;
+      vel.y = 0;
+      onGround = true;
+      continue;
+    }
+    if (vel.y > 0 && prevY + height <= c.minY + 0.08 && pos.y + height >= c.minY) {
+      pos.y = c.minY - height - SKIN;
+      vel.y = 0;
+    }
+  }
+  return onGround;
+}
+
+function unstick(
+  pos: { x: number; y: number; z: number },
+  radius: number,
+  height: number,
+  colliders: Collider[],
+) {
+  for (let n = 0; n < 5; n++) {
+    let hit = false;
+    for (const c of colliders) {
+      if (isFloor(c, pos.y)) continue;
+      if (c.minY > pos.y + height - 0.05) continue;
+      if (c.maxY < pos.y + 0.18) continue;
+      const minX = pos.x - radius;
+      const maxX = pos.x + radius;
+      const minZ = pos.z - radius;
+      const maxZ = pos.z + radius;
+      if (!aabbOverlap(minX, pos.y + 0.12, minZ, maxX, pos.y + height, maxZ, c)) continue;
+      const penX = Math.min(maxX - c.minX, c.maxX - minX);
+      const penZ = Math.min(maxZ - c.minZ, c.maxZ - minZ);
+      if (penX < penZ) {
+        pos.x += pos.x < (c.minX + c.maxX) * 0.5 ? -(penX + SKIN) : penX + SKIN;
+      } else {
+        pos.z += pos.z < (c.minZ + c.maxZ) * 0.5 ? -(penZ + SKIN) : penZ + SKIN;
+      }
+      hit = true;
+    }
+    if (!hit) break;
   }
 }
 
@@ -208,9 +251,8 @@ function blockedAt(
 ): boolean {
   for (const c of colliders) {
     if (c === ignore) continue;
-    if (aabbOverlap(x - radius, y + 0.05, z - radius, x + radius, y + height, z + radius, c)) {
-      return true;
-    }
+    if (isFloor(c, y)) continue;
+    if (aabbOverlap(x - radius, y + 0.08, z - radius, x + radius, y + height, z + radius, c)) return true;
   }
   return false;
 }

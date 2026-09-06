@@ -1,4 +1,4 @@
-import type { BoxSpec, EnemySpec, LevelDef, LightSpec, Vec2 } from "./types";
+import type { BoxSpec, EnemySpec, LevelDef, LightSpec, LootSpec, Vec2 } from "./types";
 
 function box(
   x: number,
@@ -245,6 +245,13 @@ function dockyard(): LevelDef {
       { x: 6, y: 1.4, z: -6 },
       { x: -2, y: 1.4, z: 2 },
     ],
+    loot: [
+      { x: 4.5, z: 17.5, kind: "ammo" },
+      { x: -11, z: 15, kind: "ammo" },
+      { x: 9, z: -8, kind: "med" },
+      { x: 7.2, z: -6.5, kind: "intel" },
+      { x: -3.4, z: 3.2, kind: "intel" },
+    ] as LootSpec[],
     boxes,
     lights,
     enemies,
@@ -356,6 +363,13 @@ function villa(): LevelDef {
       { x: 2, y: 1.1, z: -4 },
       { x: -10, y: 1.1, z: 6 },
     ],
+    loot: [
+      { x: 6, z: 14, kind: "ammo" },
+      { x: -14, z: 10, kind: "ammo" },
+      { x: 8, z: -8, kind: "med" },
+      { x: 3.2, z: -4.5, kind: "intel" },
+      { x: -11.2, z: 5.5, kind: "intel" },
+    ] as LootSpec[],
     boxes,
     lights,
     enemies,
@@ -455,6 +469,13 @@ function outpost(): LevelDef {
       { x: 18, y: 1.1, z: 8 },
       { x: -16, y: 1.1, z: 10 },
     ],
+    loot: [
+      { x: 8, z: 16, kind: "ammo" },
+      { x: -10, z: 14, kind: "ammo" },
+      { x: 14, z: -8, kind: "med" },
+      { x: 17, z: 7.2, kind: "intel" },
+      { x: -15, z: 9.2, kind: "intel" },
+    ] as LootSpec[],
     boxes,
     lights,
     enemies,

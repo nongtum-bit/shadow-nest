@@ -149,6 +149,14 @@ export class ShadowNestGame {
   enemies: Enemy[] = [];
   intelGot: boolean[] = [];
   intelMeshes: THREE.Mesh[] = [];
+  loots: {
+    spec: { x: number; z: number; kind: "ammo" | "med" | "intel" };
+    open: boolean;
+    group: THREE.Group;
+    lid: THREE.Mesh;
+  }[] = [];
+  toast = "";
+  toastT = 0;
   suspicion = 0;
   spottedEver = false;
   combatEver = false;
@@ -253,6 +261,9 @@ export class ShadowNestGame {
     this.loadout.sniper.mag = 5;
     this.loadout.sniper.reserve = 15;
     this.intelGot = this.level.intel.map(() => false);
+    this.loots = [];
+    this.toast = "";
+    this.toastT = 0;
     this.fireCd = 0;
     this.reloadT = 0;
     this.running = true;
@@ -325,8 +336,8 @@ export class ShadowNestGame {
 
     this.ads = act.ads && this.reloadT <= 0;
     const sens = this.input.lookSens * (this.ads ? w.adsSens : 1);
-    this.yaw -= act.lookX * sens;
-    this.pitch -= act.lookY * sens;
+    this.yaw -= Math.max(-0.12, Math.min(0.12, act.lookX * sens));
+    this.pitch -= Math.max(-0.12, Math.min(0.12, act.lookY * sens));
     const lim = Math.PI / 2 - 0.02;
     if (this.pitch > lim) this.pitch = lim;
     if (this.pitch < -lim) this.pitch = -lim;
@@ -380,6 +391,10 @@ export class ShadowNestGame {
     if (act.fire && this.reloadT <= 0) this.tryFire();
     if (act.just.melee || act.just.interact) this.tryMeleeOrInteract();
     this.tryPickIntel();
+    if (this.toastT > 0) {
+      this.toastT -= dt;
+      if (this.toastT <= 0) this.toast = "";
+    }
 
     this.updateEnemies(dt, spd);
     this.updateParticles(dt);
@@ -582,6 +597,7 @@ export class ShadowNestGame {
   }
 
   private tryMeleeOrInteract() {
+    if (this.tryOpenLoot()) return;
     for (let i = 0; i < this.level.intel.length; i++) {
       if (this.intelGot[i]) continue;
       const it = this.level.intel[i]!;
@@ -613,6 +629,49 @@ export class ShadowNestGame {
     }
   }
 
+  private nearestLoot() {
+    let best: (typeof this.loots)[number] | null = null;
+    let bestD = 1.9;
+    for (const l of this.loots) {
+      if (l.open) continue;
+      const d = Math.hypot(this.pos.x - l.spec.x, this.pos.z - l.spec.z);
+      if (d < bestD) {
+        bestD = d;
+        best = l;
+      }
+    }
+    return best;
+  }
+
+  private tryOpenLoot() {
+    const l = this.nearestLoot();
+    if (!l) return false;
+    l.open = true;
+    l.lid.rotation.x = -1.15;
+    l.lid.position.z = -0.18;
+    l.lid.position.y = 0.62;
+    this.audio.pickup();
+    if (l.spec.kind === "ammo") {
+      this.loadout.pistol.reserve += 12;
+      this.loadout.sniper.reserve += 5;
+      this.toast = "ได้กระสุน";
+    } else if (l.spec.kind === "med") {
+      this.health = Math.min(100, this.health + 40);
+      this.toast = "ได้ชุดปฐมพยาบาล";
+    } else {
+      const idx = this.intelGot.findIndex((g) => !g);
+      if (idx >= 0) {
+        this.intelGot[idx] = true;
+        const mesh = this.intelMeshes[idx];
+        if (mesh) mesh.visible = false;
+      }
+      this.toast = "ได้แฟ้มข่าวกรอง";
+    }
+    this.toastT = 2.2;
+    this.emitHud(true);
+    return true;
+  }
+
   private tryPickIntel() {
     for (let i = 0; i < this.level.intel.length; i++) {
       if (this.intelGot[i]) continue;
@@ -621,6 +680,8 @@ export class ShadowNestGame {
         this.intelGot[i] = true;
         this.intelMeshes[i]!.visible = false;
         this.audio.pickup();
+        this.toast = "ได้แฟ้มข่าวกรอง";
+        this.toastT = 2.2;
       }
     }
   }
@@ -908,7 +969,34 @@ export class ShadowNestGame {
       this.intelMeshes.push(m);
     }
 
+    for (const spec of L.loot ?? []) this.spawnLoot(spec);
+
     for (const spec of L.enemies) this.spawnEnemy(spec.x, spec.z, spec.waypoints, !!spec.hvt);
+  }
+
+  private spawnLoot(spec: { x: number; z: number; kind: "ammo" | "med" | "intel" }) {
+    const color = spec.kind === "ammo" ? 0x6a7a4a : spec.kind === "med" ? 0x8a4a48 : 0xb8a878;
+    const group = new THREE.Group();
+    const body = new THREE.Mesh(
+      new THREE.BoxGeometry(0.72, 0.42, 0.56),
+      new THREE.MeshLambertMaterial({ color: 0x6a5844, flatShading: true, emissive: new THREE.Color(0x6a5844).multiplyScalar(0.12) }),
+    );
+    body.position.y = 0.21;
+    const lid = new THREE.Mesh(
+      new THREE.BoxGeometry(0.76, 0.08, 0.6),
+      new THREE.MeshLambertMaterial({ color, flatShading: true, emissive: new THREE.Color(color).multiplyScalar(0.2) }),
+    );
+    lid.position.y = 0.46;
+    const tag = new THREE.Mesh(
+      new THREE.BoxGeometry(0.18, 0.04, 0.18),
+      new THREE.MeshBasicMaterial({ color }),
+    );
+    tag.position.set(0, 0.52, 0);
+    group.add(body, lid, tag);
+    group.position.set(spec.x, 0, spec.z);
+    this.worldRoot.add(group);
+    this.colliders.push(boxCollider(spec.x, 0, spec.z, 0.72, 0.5, 0.56));
+    this.loots.push({ spec, open: false, group, lid });
   }
 
   private spawnEnemy(x: number, z: number, waypoints: { x: number; z: number }[], hvt: boolean) {
@@ -1062,7 +1150,17 @@ export class ShadowNestGame {
     const intelGot = this.intelGot.filter(Boolean).length;
     let objective = hvtAlive ? "กำจัดเป้าหมายสำคัญ" : "ไปยังจุดถอนตัว";
     if (intelGot < intelNeed && !hvtAlive) objective = "เก็บข่าวกรอง แล้วถอนตัว";
+    const closedLoot = this.loots.filter((l) => !l.open).length;
+    if (closedLoot > 0 && this.nearestLoot()) objective = "เปิดลังใกล้ตัว (ปุ่ม E)";
     if (this.inNest()) objective = this.ads ? "เล็งหัว แล้วค้างหายใจ" : "ซุ่มแล้วเล็ง (คลิกขวา)";
+    const near = this.nearestLoot();
+    const interactHint = !near
+      ? ""
+      : near.spec.kind === "ammo"
+        ? "E เปิดลังกระสุน"
+        : near.spec.kind === "med"
+          ? "E เปิดลังยา"
+          : "E เปิดลังแฟ้ม";
     const snap: HudSnapshot = {
       health: this.health,
       mag: w.mag,
@@ -1089,9 +1187,11 @@ export class ShadowNestGame {
       nest: this.inNest(),
       objective,
       takedownReady: this.takedownReady(),
-      interactReady: this.level.intel.some(
+      interactReady: !!near || this.level.intel.some(
         (it, i) => !this.intelGot[i] && Math.hypot(this.pos.x - it.x, this.pos.z - it.z) < 1.8,
       ),
+      interactHint,
+      toast: this.toast,
       ammoName: w.name,
       ammoHint: this.weapon === "sniper" ? "โบลต์ · คลิกขวาส่องกล้อง" : "เก็บเสียง · ระยะใกล้",
     };
@@ -1164,6 +1264,7 @@ export class ShadowNestGame {
     this.nestBoxes = [];
     this.enemies = [];
     this.intelMeshes = [];
+    this.loots = [];
     this.extractMesh = null;
     for (const m of this.mats.values()) m.dispose();
     this.mats.clear();
