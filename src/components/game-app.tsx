@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
 import { Crosshair, Volume2, VolumeX } from "lucide-react";
 import type { ShadowNestGame } from "@/game/engine";
 import { LEVELS, useGame } from "@/game/store";
@@ -42,6 +42,9 @@ function useStageBox() {
 export function GameApp() {
   const screen = useGame((s) => s.screen);
   const box = useStageBox();
+  const innerRef = useRef<HTMLDivElement>(null);
+  const hold = useRef<{ el: HTMLElement; px: number; py: number; lx: number; ly: number } | null>(null);
+
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
     if (q.has("qa")) {
@@ -50,31 +53,113 @@ export function GameApp() {
     }
   }, []);
 
-  const stageStyle = box.force
+  const pick = (x: number, y: number) => {
+    const root = innerRef.current;
+    if (!root) return null;
+    const nodes = root.querySelectorAll<HTMLElement>("button, [data-hit]");
+    for (let i = nodes.length - 1; i >= 0; i--) {
+      const el = nodes[i]!;
+      const r = el.getBoundingClientRect();
+      if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return el;
+    }
+    return null;
+  };
+
+  const applyHit = (el: HTMLElement, type: "down" | "move" | "up", x: number, y: number) => {
+    const hit = el.dataset.hit;
+    const g = liveGame.current;
+    if (hit === "stick" && g) {
+      const r = el.getBoundingClientRect();
+      const px = x - (r.left + r.width / 2);
+      const py = y - (r.top + r.height / 2);
+      let mx = py / 42;
+      let my = -px / 42;
+      const m = Math.hypot(mx, my) || 1;
+      const k = Math.min(1, m);
+      g.input.touchMoveX = (mx / m) * k;
+      g.input.touchMoveY = (my / m) * k;
+      if (type === "up") {
+        g.input.touchMoveX = 0;
+        g.input.touchMoveY = 0;
+      }
+      return;
+    }
+    if (hit === "look" && g) {
+      if (type === "down") {
+        hold.current = { el, px: x, py: y, lx: x, ly: y };
+      } else if (type === "move" && hold.current) {
+        const dx = x - hold.current.lx;
+        const dy = y - hold.current.ly;
+        g.input.touchLookX += dy;
+        g.input.touchLookY += -dx;
+        hold.current.lx = x;
+        hold.current.ly = y;
+      }
+      return;
+    }
+    if (g && hit === "fire") g.input.touchFire = type !== "up";
+    if (g && hit === "ads") g.input.touchAds = type !== "up";
+    if (g && hit === "crouch") g.input.touchCrouch = type !== "up";
+    if (g && hit === "jump" && type === "down") g.input.touchJump = true;
+    if (g && hit === "weapon" && type === "down") g.input.touchWeapon = true;
+    if (g && hit === "interact" && type === "down") g.input.touchInteract = true;
+    if (!hit && el.tagName === "BUTTON" && type === "up") el.click();
+  };
+
+  const onProxyPointerDown = (e: ReactPointerEvent) => {
+    if (!box.force) return;
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    const el = pick(e.clientX, e.clientY);
+    if (!el) return;
+    hold.current = { el, px: e.clientX, py: e.clientY, lx: e.clientX, ly: e.clientY };
+    applyHit(el, "down", e.clientX, e.clientY);
+  };
+  const onProxyPointerMove = (e: ReactPointerEvent) => {
+    if (!box.force || !hold.current) return;
+    applyHit(hold.current.el, "move", e.clientX, e.clientY);
+  };
+  const onProxyPointerUp = (e: ReactPointerEvent) => {
+    if (!box.force) return;
+    const h = hold.current;
+    hold.current = null;
+    if (h) applyHit(h.el, "up", e.clientX, e.clientY);
+  };
+
+  const innerStyle = box.force
     ? {
-        position: "fixed" as const,
+        position: "absolute" as const,
         top: 0,
         left: box.h,
         width: box.w,
         height: box.h,
         transform: "rotate(90deg)",
         transformOrigin: "top left",
+        pointerEvents: "none" as const,
       }
-    : undefined;
+    : { position: "relative" as const, height: "100dvh", width: "100%" };
 
   return (
     <div
       className="overflow-hidden bg-bg text-fg"
-      style={stageStyle ?? { position: "relative", height: "100dvh", width: "100%" }}
+      style={{ position: "fixed", inset: 0, touchAction: "none" }}
+      onPointerDown={box.force ? onProxyPointerDown : undefined}
+      onPointerMove={box.force ? onProxyPointerMove : undefined}
+      onPointerUp={box.force ? onProxyPointerUp : undefined}
+      onPointerCancel={box.force ? onProxyPointerUp : undefined}
     >
-      {screen === "playing" || screen === "paused" || screen === "win" || screen === "lose" ? (
-        <PlayView />
-      ) : (
-        <MenuView />
-      )}
+      <div ref={innerRef} className="h-full w-full overflow-hidden bg-bg text-fg" style={innerStyle}>
+        {screen === "playing" || screen === "paused" || screen === "win" || screen === "lose" ? (
+          <PlayView />
+        ) : (
+          <MenuView />
+        )}
+      </div>
     </div>
   );
 }
+
+const liveGame: { current: ShadowNestGame | null } = { current: null };
 
 function MenuView() {
   const screen = useGame((s) => s.screen);
@@ -236,11 +321,13 @@ function PlayView() {
       game.start(mission);
       game.audio.setMuted(useGame.getState().muted);
       gameRef.current = game;
+      liveGame.current = game;
     });
     return () => {
       disposed = true;
       game?.dispose();
       gameRef.current = null;
+      liveGame.current = null;
     };
   }, [mission, session, lose, pause, setHud, setLocked, win]);
 
@@ -554,6 +641,7 @@ function TouchPad({ gameRef }: { gameRef: RefObject<ShadowNestGame | null> }) {
     <div className="pointer-events-none absolute inset-0 z-20">
       <div
         className="pointer-events-auto absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-[max(0.75rem,env(safe-area-inset-left))] h-24 w-24 rounded-full border border-fg/25 bg-bg/40"
+        data-hit="stick"
         onPointerDown={(e) => {
           (e.target as HTMLElement).setPointerCapture(e.pointerId);
           moveId.current = e.pointerId;
@@ -578,6 +666,7 @@ function TouchPad({ gameRef }: { gameRef: RefObject<ShadowNestGame | null> }) {
       />
       <div
         className="pointer-events-auto absolute inset-y-14 right-24 left-[32%]"
+        data-hit="look"
         onPointerDown={(e) => {
           (e.target as HTMLElement).setPointerCapture(e.pointerId);
           lookId.current = e.pointerId;
@@ -599,6 +688,7 @@ function TouchPad({ gameRef }: { gameRef: RefObject<ShadowNestGame | null> }) {
         <TouchBtn
           label="ยิง"
           fire
+          hit="fire"
           onDown={() => {
             const g = gameRef.current;
             if (g) g.input.touchFire = true;
@@ -611,6 +701,7 @@ function TouchPad({ gameRef }: { gameRef: RefObject<ShadowNestGame | null> }) {
         <div className="flex gap-1.5">
           <TouchBtn
             label="เล็ง"
+            hit="ads"
             onDown={() => {
               const g = gameRef.current;
               if (g) g.input.touchAds = true;
@@ -623,6 +714,7 @@ function TouchPad({ gameRef }: { gameRef: RefObject<ShadowNestGame | null> }) {
           <TouchBtn
             label="ย่อ"
             small
+            hit="crouch"
             onDown={() => {
               const g = gameRef.current;
               if (g) g.input.touchCrouch = true;
@@ -637,6 +729,7 @@ function TouchPad({ gameRef }: { gameRef: RefObject<ShadowNestGame | null> }) {
           <TouchBtn
             label="โดด"
             small
+            hit="jump"
             onDown={() => {
               const g = gameRef.current;
               if (g) g.input.touchJump = true;
@@ -645,6 +738,7 @@ function TouchPad({ gameRef }: { gameRef: RefObject<ShadowNestGame | null> }) {
           <TouchBtn
             label="1/2"
             small
+            hit="weapon"
             onDown={() => {
               const g = gameRef.current;
               if (g) g.input.touchWeapon = true;
@@ -653,6 +747,7 @@ function TouchPad({ gameRef }: { gameRef: RefObject<ShadowNestGame | null> }) {
           <TouchBtn
             label="E"
             small
+            hit="interact"
             onDown={() => {
               const g = gameRef.current;
               if (g) g.input.touchInteract = true;
@@ -668,18 +763,21 @@ function TouchBtn({
   label,
   small,
   fire,
+  hit,
   onDown,
   onUp,
 }: {
   label: string;
   small?: boolean;
   fire?: boolean;
+  hit?: string;
   onDown: () => void;
   onUp?: () => void;
 }) {
   return (
     <button
       type="button"
+      data-hit={hit}
       className={`border font-display tracking-wide ${
         fire
           ? "h-14 w-14 rounded-full border-fg/40 bg-fg text-sm text-accent-fg"
