@@ -195,8 +195,13 @@ export class ShadowNestGame {
     this.renderer.autoClear = false;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.2;
+    this.renderer.toneMappingExposure = 1.45;
     this.renderer.shadowMap.enabled = false;
+
+    const fill = new THREE.PointLight(0xffe6c8, 2.6, 22);
+    fill.position.set(0.15, 0.12, 0.35);
+    this.cam.add(fill);
+    this.scene.add(this.cam);
 
     this.muzzle = new THREE.PointLight(0xffcc88, 0, 6);
     this.weaponScene.add(this.muzzle);
@@ -210,6 +215,7 @@ export class ShadowNestGame {
     this.viewRoot.position.set(0.28, -0.24, -0.55);
 
     this.isTouch = window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0;
+    if (this.isTouch) this.input.lookSens = 0.0044;
     this.input.attach(canvas);
     this.bindLock();
     this.fit();
@@ -331,7 +337,9 @@ export class ShadowNestGame {
 
     this.crouched = act.crouch;
     const height = this.crouched ? HEIGHT_CROUCH : HEIGHT_STAND;
-    const speedMax = this.ads ? CROUCH : this.crouched ? CROUCH : act.sprint ? SPRINT : WALK;
+    const walk = this.isTouch ? 5.8 : WALK;
+    const sprint = this.isTouch ? 8.4 : SPRINT;
+    const speedMax = this.ads ? CROUCH : this.crouched ? CROUCH : act.sprint ? sprint : walk;
     const fx = -Math.sin(this.yaw);
     const fz = -Math.cos(this.yaw);
     const rx = Math.cos(this.yaw);
@@ -847,10 +855,10 @@ export class ShadowNestGame {
     this.scene.add(this.worldRoot);
     this.renderer.setClearColor(L.fog);
 
-    this.worldRoot.add(new THREE.AmbientLight(0xb8c4c8, 0.28));
-    const hemi = new THREE.HemisphereLight(L.hemiSky, L.hemiGround, 1.05);
+    this.worldRoot.add(new THREE.AmbientLight(0xd0d8dc, 0.72));
+    const hemi = new THREE.HemisphereLight(L.hemiSky, L.hemiGround, 1.35);
     this.worldRoot.add(hemi);
-    const sun = new THREE.DirectionalLight(L.sunColor, Math.max(0.95, L.sunIntensity * 1.25));
+    const sun = new THREE.DirectionalLight(L.sunColor, Math.max(1.25, L.sunIntensity * 1.5));
     sun.position.set(L.sunDir[0] * 40, L.sunDir[1] * 40, L.sunDir[2] * 40);
     this.worldRoot.add(sun);
 
@@ -871,7 +879,7 @@ export class ShadowNestGame {
     }
 
     for (const l of L.lights) {
-      const p = new THREE.PointLight(l.color, l.intensity * 1.35, l.distance * 1.2);
+      const p = new THREE.PointLight(l.color, l.intensity * 2.1, l.distance * 1.5);
       p.position.set(l.x, l.y, l.z);
       this.worldRoot.add(p);
       const bulb = new THREE.Mesh(
@@ -954,7 +962,11 @@ export class ShadowNestGame {
   private mat(color: number) {
     let m = this.mats.get(color);
     if (!m) {
-      m = new THREE.MeshLambertMaterial({ color, flatShading: true });
+      m = new THREE.MeshLambertMaterial({
+        color,
+        flatShading: true,
+        emissive: new THREE.Color(color).multiplyScalar(0.16),
+      });
       this.mats.set(color, m);
     }
     return m;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
 import { Crosshair, Volume2, VolumeX } from "lucide-react";
 import type { ShadowNestGame } from "@/game/engine";
 import { LEVELS, useGame } from "@/game/store";
@@ -8,8 +8,45 @@ function isTouchDevice() {
   return window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0;
 }
 
+const liveGame: { current: ShadowNestGame | null } = { current: null };
+
+function useForceLand() {
+  const [force, setForce] = useState(() =>
+    typeof window === "undefined" ? false : isTouchDevice() && window.innerHeight > window.innerWidth,
+  );
+  const [size, setSize] = useState(() => ({
+    w: typeof window === "undefined" ? 844 : Math.max(window.innerWidth, window.innerHeight),
+    h: typeof window === "undefined" ? 390 : Math.min(window.innerWidth, window.innerHeight),
+  }));
+  useEffect(() => {
+    const apply = () => {
+      const vv = window.visualViewport;
+      const pw = Math.round(vv?.width ?? window.innerWidth);
+      const ph = Math.round(vv?.height ?? window.innerHeight);
+      const touch = isTouchDevice();
+      const portrait = ph > pw;
+      setForce(touch && portrait);
+      setSize({ w: Math.max(pw, ph), h: Math.min(pw, ph) });
+    };
+    apply();
+    window.addEventListener("resize", apply);
+    window.addEventListener("orientationchange", apply);
+    window.visualViewport?.addEventListener("resize", apply);
+    return () => {
+      window.removeEventListener("resize", apply);
+      window.removeEventListener("orientationchange", apply);
+      window.visualViewport?.removeEventListener("resize", apply);
+    };
+  }, []);
+  return { force, ...size };
+}
+
 export function GameApp() {
   const screen = useGame((s) => s.screen);
+  const land = useForceLand();
+  const innerRef = useRef<HTMLDivElement>(null);
+  const hold = useRef<{ el: HTMLElement; lx: number; ly: number } | null>(null);
+
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
     if (q.has("qa")) {
@@ -17,13 +54,106 @@ export function GameApp() {
       useGame.setState({ mission: i, screen: "playing" });
     }
   }, []);
+
+  const pick = (x: number, y: number) => {
+    const root = innerRef.current;
+    if (!root) return null;
+    const nodes = root.querySelectorAll<HTMLElement>("button, [data-hit]");
+    for (let i = nodes.length - 1; i >= 0; i--) {
+      const el = nodes[i]!;
+      const r = el.getBoundingClientRect();
+      if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return el;
+    }
+    return null;
+  };
+
+  const applyHit = (el: HTMLElement, type: "down" | "move" | "up", x: number, y: number) => {
+    const hit = el.dataset.hit;
+    const g = liveGame.current;
+    if (hit === "stick" && g) {
+      const r = el.getBoundingClientRect();
+      const px = x - (r.left + r.width / 2);
+      const py = y - (r.top + r.height / 2);
+      let mx = py / 34;
+      let my = -px / 34;
+      const m = Math.hypot(mx, my) || 1;
+      const k = Math.min(1, m);
+      if (type === "up") {
+        g.input.touchMoveX = 0;
+        g.input.touchMoveY = 0;
+      } else {
+        g.input.touchMoveX = (mx / m) * k;
+        g.input.touchMoveY = (my / m) * k;
+      }
+      return;
+    }
+    if (hit === "look" && g) {
+      if (type === "move" && hold.current) {
+        g.input.touchLookX += y - hold.current.ly;
+        g.input.touchLookY += -(x - hold.current.lx);
+        hold.current.lx = x;
+        hold.current.ly = y;
+      }
+      return;
+    }
+    if (g && hit === "fire") g.input.touchFire = type !== "up";
+    if (g && hit === "ads") g.input.touchAds = type !== "up";
+    if (g && hit === "crouch") g.input.touchCrouch = type !== "up";
+    if (g && hit === "jump" && type === "down") g.input.touchJump = true;
+    if (g && hit === "weapon" && type === "down") g.input.touchWeapon = true;
+    if (g && hit === "interact" && type === "down") g.input.touchInteract = true;
+    if (!hit && el.tagName === "BUTTON" && type === "up") el.click();
+  };
+
+  const onDown = (e: ReactPointerEvent) => {
+    if (!land.force) return;
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    const el = pick(e.clientX, e.clientY);
+    if (!el) return;
+    hold.current = { el, lx: e.clientX, ly: e.clientY };
+    applyHit(el, "down", e.clientX, e.clientY);
+  };
+  const onMove = (e: ReactPointerEvent) => {
+    if (!land.force || !hold.current) return;
+    applyHit(hold.current.el, "move", e.clientX, e.clientY);
+  };
+  const onUp = (e: ReactPointerEvent) => {
+    if (!land.force) return;
+    const h = hold.current;
+    hold.current = null;
+    if (h) applyHit(h.el, "up", e.clientX, e.clientY);
+  };
+
+  const innerStyle = land.force
+    ? {
+        position: "absolute" as const,
+        top: 0,
+        left: land.h,
+        width: land.w,
+        height: land.h,
+        transform: "rotate(90deg)",
+        transformOrigin: "top left",
+        pointerEvents: "none" as const,
+      }
+    : { position: "relative" as const, height: "100dvh", width: "100%" };
+
   return (
-    <div className="relative h-dvh w-full overflow-hidden bg-bg text-fg">
-      {screen === "playing" || screen === "paused" || screen === "win" || screen === "lose" ? (
-        <PlayView />
-      ) : (
-        <MenuView />
-      )}
+    <div
+      className="overflow-hidden bg-bg text-fg"
+      style={{ position: "fixed", inset: 0, touchAction: "none" }}
+      onPointerDown={land.force ? onDown : undefined}
+      onPointerMove={land.force ? onMove : undefined}
+      onPointerUp={land.force ? onUp : undefined}
+      onPointerCancel={land.force ? onUp : undefined}
+    >
+      <div ref={innerRef} className="h-full w-full overflow-hidden bg-bg" style={innerStyle}>
+        {screen === "playing" || screen === "paused" || screen === "win" || screen === "lose" ? (
+          <PlayView />
+        ) : (
+          <MenuView />
+        )}
+      </div>
     </div>
   );
 }
@@ -34,7 +164,6 @@ function MenuView() {
   const selectMission = useGame((s) => s.selectMission);
   const deploy = useGame((s) => s.deploy);
   const mission = useGame((s) => s.mission);
-  const best = useGame((s) => s.best);
   const L = LEVELS[mission]!;
 
   return (
@@ -42,23 +171,21 @@ function MenuView() {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,color-mix(in_oklab,var(--color-accent)_14%,transparent),transparent_55%)]" />
       <div className="pointer-events-none absolute inset-0 opacity-[0.07] [background-image:linear-gradient(to_right,var(--color-fg)_1px,transparent_1px),linear-gradient(to_bottom,var(--color-fg)_1px,transparent_1px)] [background-size:48px_48px]" />
 
-      <header className="relative z-10 flex items-center justify-between px-5 pt-5 sm:px-8">
+      <header className="relative z-10 flex items-center justify-between px-5 pt-3">
         <p className="font-display text-sm tracking-[0.28em] text-muted uppercase">Protocol N-04</p>
         <p className="text-xs text-subtle">low-poly · stealth · perch</p>
       </header>
 
       {screen === "title" && (
-        <main className="relative z-10 mx-auto flex w-full max-w-lg flex-1 flex-col justify-center px-5 pb-10 sm:px-8">
-          <p className="mb-3 font-display text-sm tracking-[0.34em] text-accent uppercase">Field Ops</p>
-          <h1 className="font-display text-6xl font-semibold leading-[0.9] tracking-tight sm:text-7xl">
-            SHADOW
-            <br />
-            NEST
-          </h1>
-          <p className="mt-5 max-w-sm text-base leading-relaxed text-muted">
-            เกมยิงมุมมองบุคคลที่หนึ่งสายลับ ซุ่มบนหอ แอบในเงา แล้วยิงนัดเดียวจบ
-          </p>
-          <div className="mt-8 flex flex-col gap-3">
+        <main className="relative z-10 mx-auto flex w-full flex-1 flex-row items-center gap-8 px-6 py-4">
+          <div className="min-w-0 flex-1">
+            <p className="mb-2 font-display text-xs tracking-[0.3em] text-accent uppercase">Field Ops</p>
+            <h1 className="font-display text-5xl font-semibold leading-[0.9] tracking-tight">SHADOW NEST</h1>
+            <p className="mt-3 max-w-md text-sm leading-relaxed text-muted">
+              เกมสายลับมุมมองบุคคลที่หนึ่ง ซุ่มบนหอ แล้วเล็งนัดเดียว
+            </p>
+          </div>
+          <div className="flex w-52 shrink-0 flex-col gap-2">
             <Primary onClick={() => setScreen("missions")}>เริ่มปฏิบัติการ</Primary>
             <Ghost onClick={() => setScreen("help")}>วิธีเล่น</Ghost>
           </div>
@@ -66,17 +193,15 @@ function MenuView() {
       )}
 
       {screen === "missions" && (
-        <main className="relative z-10 mx-auto flex w-full max-w-3xl flex-1 flex-col overflow-y-auto px-5 py-5 sm:px-8">
-          <button
-            type="button"
-            onClick={() => setScreen("title")}
-            className="mb-4 self-start text-sm text-muted hover:text-fg"
-          >
-            กลับ
-          </button>
-          <h2 className="font-display text-3xl font-semibold tracking-tight">เลือกด่านแล้วเล่นเลย</h2>
-          <p className="mt-1 text-sm text-muted">แตะการ์ดเพื่อเข้าเกม 3D</p>
-          <div className="mt-5 grid gap-3">
+        <main className="relative z-10 flex h-full flex-col px-5 py-3">
+          <div className="mb-3 flex items-center justify-between">
+            <button type="button" onClick={() => setScreen("title")} className="text-sm text-muted hover:text-fg">
+              กลับ
+            </button>
+            <h2 className="font-display text-xl font-semibold">เลือกด่าน — แตะแล้วเข้าเกม</h2>
+            <span className="w-10" />
+          </div>
+          <div className="grid min-h-0 flex-1 grid-cols-3 gap-3">
             {LEVELS.map((lv, i) => (
               <button
                 key={lv.id}
@@ -85,17 +210,14 @@ function MenuView() {
                   selectMission(i);
                   deploy();
                 }}
-                className="panel rounded-lg p-4 text-left transition-transform duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:scale-[1.01] active:scale-[0.98]"
+                className="panel flex flex-col rounded-lg p-3 text-left"
               >
-                <p className="font-display text-xs tracking-[0.22em] text-accent uppercase">
+                <p className="font-display text-[10px] tracking-[0.2em] text-accent uppercase">
                   0{i + 1} {lv.codename}
                 </p>
-                <h3 className="mt-1 font-display text-2xl font-semibold">{lv.nameTh}</h3>
-                <p className="mt-1 text-sm text-muted">{lv.place}</p>
-                <p className="mt-3 font-display text-sm tracking-wide text-accent">แตะเพื่อเข้าเกม →</p>
-                {best[lv.id] && (
-                  <p className="mt-2 text-xs tracking-widest text-ok uppercase">{best[lv.id]}</p>
-                )}
+                <h3 className="mt-1 font-display text-xl font-semibold">{lv.nameTh}</h3>
+                <p className="mt-1 line-clamp-2 text-xs text-muted">{lv.place}</p>
+                <p className="mt-auto pt-3 font-display text-xs tracking-wide text-accent">แตะเพื่อเล่น →</p>
               </button>
             ))}
           </div>
@@ -127,18 +249,22 @@ function MenuView() {
       )}
 
       {screen === "help" && (
-        <main className="relative z-10 mx-auto flex w-full max-w-lg flex-1 flex-col justify-center px-5 py-8 sm:px-8">
-          <h2 className="font-display text-4xl font-semibold">วิธีเล่น</h2>
-          <dl className="mt-5 space-y-3 text-sm leading-relaxed">
-            <Row k="WASD" v="เคลื่อนที่ · Shift วิ่ง · Ctrl / C ย่อตัว" />
-            <Row k="เมาส์" v="มองรอบ · คลิกซ้ายยิง · คลิกขวาส่องกล้อง" />
-            <Row k="1 / 2" v="สลับปืนสั้นเก็บเสียง กับสไนเปอร์" />
-            <Row k="R" v="บรรจุกระสุน · E ปิดเงียบจากด้านหลัง / เก็บแฟ้ม" />
-            <Row k="จุดซุ่ม" v="ขึ้นหอหรือดาดฟ้า ย่อหลังกำแพง แล้วเล็งหัว" />
-            <Row k="มือถือ" v="จอยซ้ายเดิน · ลากขวาเล็ง · ปุ่มยิงขวาล่าง" />
-          </dl>
-          <div className="mt-8">
-            <Primary onClick={() => setScreen("missions")}>เลือกพื้นที่</Primary>
+        <main className="relative z-10 flex h-full flex-col justify-center px-6 py-4">
+          <div className="flex items-start justify-between gap-6">
+            <div>
+              <h2 className="font-display text-3xl font-semibold">วิธีเล่น</h2>
+              <dl className="mt-3 grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
+                <Row k="จอยซ้าย" v="เดิน" />
+                <Row k="ลากกลางจอ" v="เล็ง" />
+                <Row k="ปุ่มขาว" v="ยิง" />
+                <Row k="เล็ง / ย่อ" v="ซุ่มหลังกำแพงแล้วส่องกล้อง" />
+                <Row k="E" v="ปิดเงียบจากหลัง / เก็บแฟ้ม" />
+                <Row k="เป้าหมาย" v="กำจัด HVT แล้วเข้าโซนถอนตัว" />
+              </dl>
+            </div>
+            <div className="w-48 shrink-0">
+              <Primary onClick={() => setScreen("missions")}>เลือกด่าน</Primary>
+            </div>
           </div>
         </main>
       )}
@@ -189,11 +315,13 @@ function PlayView() {
       game.start(mission);
       game.audio.setMuted(useGame.getState().muted);
       gameRef.current = game;
+      liveGame.current = game;
     });
     return () => {
       disposed = true;
       game?.dispose();
       gameRef.current = null;
+      liveGame.current = null;
     };
   }, [mission, session, lose, pause, setHud, setLocked, win]);
 
@@ -341,37 +469,25 @@ function Hud({ hud, compact }: { hud: HudSnapshot; compact: boolean }) {
 
 function HudCompact({ hud }: { hud: HudSnapshot }) {
   return (
-    <div className="absolute inset-x-0 top-0 px-3 pt-[max(0.4rem,env(safe-area-inset-top))] pr-28">
-      <div className="flex items-center gap-2">
-        <div className="hud-chip min-w-0 flex-1 px-2.5 py-1">
-          <p className="truncate text-xs leading-tight">{hud.objective}</p>
+    <div className="absolute inset-x-0 top-0 flex items-center gap-2 px-3 pt-2 pr-24">
+      <div className="hud-chip min-w-0 flex-1 truncate px-2.5 py-1 text-xs">{hud.objective}</div>
+      {hud.nest && <div className="hud-chip px-2 py-1 text-[10px] tracking-widest text-accent">ซุ่ม</div>}
+      <div className="hud-chip flex items-center gap-2 px-2 py-1">
+        <span className="text-[10px] text-muted">HP</span>
+        <div className="h-1.5 w-16 overflow-hidden rounded-full bg-surface-2">
+          <div className="h-full bg-fg" style={{ width: `${hud.health}%` }} />
         </div>
-        {hud.nest && (
-          <div className="hud-chip px-2 py-1 text-[10px] tracking-widest text-accent uppercase">ซุ่ม</div>
-        )}
+        <span className="font-display text-sm tabular-nums">
+          {hud.mag}
+          <span className="text-[10px] text-muted">/{hud.reserve}</span>
+        </span>
       </div>
-      <div className="mt-1 flex items-center gap-2">
-        <div className="hud-chip flex items-center gap-2 px-2.5 py-1">
-          <span className="text-[10px] text-muted">HP</span>
-          <div className="h-1.5 w-20 overflow-hidden rounded-full bg-surface-2">
-            <div className="h-full bg-fg" style={{ width: `${hud.health}%` }} />
-          </div>
-          <span className="font-display text-sm tabular-nums leading-none">
-            {hud.mag}
-            <span className="text-[10px] text-muted">/{hud.reserve}</span>
-          </span>
-        </div>
-        <div className="hud-chip flex items-center gap-2 px-2 py-1">
-          <span className="text-[10px] text-muted">ตรวจ</span>
-          <div className="h-1.5 w-16 overflow-hidden rounded-full bg-surface-2">
-            <div
-              className={`h-full ${hud.spotted ? "bg-danger" : "bg-accent"}`}
-              style={{ width: `${Math.round(hud.suspicion * 100)}%` }}
-            />
-          </div>
-          <span className="text-[10px] text-muted tabular-nums">
-            {hud.enemiesAlive} · {hud.intelGot}/{hud.intelNeed}
-          </span>
+      <div className="hud-chip px-2 py-1">
+        <div className="h-1.5 w-12 overflow-hidden rounded-full bg-surface-2">
+          <div
+            className={`h-full ${hud.spotted ? "bg-danger" : "bg-accent"}`}
+            style={{ width: `${Math.round(hud.suspicion * 100)}%` }}
+          />
         </div>
       </div>
     </div>
@@ -506,7 +622,7 @@ function TouchPad({ gameRef }: { gameRef: RefObject<ShadowNestGame | null> }) {
   return (
     <div className="pointer-events-none absolute inset-0 z-20">
       <div
-        className="pointer-events-auto absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-[max(0.75rem,env(safe-area-inset-left))] h-24 w-24 rounded-full border border-fg/25 bg-bg/40"
+        className="pointer-events-auto absolute bottom-3 left-4 h-20 w-20 rounded-full border-2 border-fg/40 bg-bg/50"
         data-hit="stick"
         onPointerDown={(e) => {
           (e.target as HTMLElement).setPointerCapture(e.pointerId);
@@ -515,8 +631,8 @@ function TouchPad({ gameRef }: { gameRef: RefObject<ShadowNestGame | null> }) {
         }}
         onPointerMove={(e) => {
           if (e.pointerId !== moveId.current) return;
-          const dx = (e.clientX - origin.current.x) / 40;
-          const dy = (e.clientY - origin.current.y) / 40;
+          const dx = (e.clientX - origin.current.x) / 32;
+          const dy = (e.clientY - origin.current.y) / 32;
           const m = Math.hypot(dx, dy) || 1;
           const k = Math.min(1, m);
           setMove((dx / m) * k, (-dy / m) * k);
@@ -531,7 +647,7 @@ function TouchPad({ gameRef }: { gameRef: RefObject<ShadowNestGame | null> }) {
         }}
       />
       <div
-        className="pointer-events-auto absolute inset-y-14 right-24 left-[32%]"
+        className="pointer-events-auto absolute inset-y-10 right-28 left-[28%]"
         data-hit="look"
         onPointerDown={(e) => {
           (e.target as HTMLElement).setPointerCapture(e.pointerId);
@@ -550,7 +666,7 @@ function TouchPad({ gameRef }: { gameRef: RefObject<ShadowNestGame | null> }) {
           lookId.current = null;
         }}
       />
-      <div className="pointer-events-auto absolute right-[max(0.6rem,env(safe-area-inset-right))] bottom-[max(0.6rem,env(safe-area-inset-bottom))] flex flex-col items-end gap-1.5">
+      <div className="pointer-events-auto absolute right-3 bottom-3 flex flex-row-reverse items-end gap-1.5">
         <TouchBtn
           label="ยิง"
           fire
@@ -646,10 +762,10 @@ function TouchBtn({
       data-hit={hit}
       className={`border font-display tracking-wide ${
         fire
-          ? "h-14 w-14 rounded-full border-fg/40 bg-fg text-sm text-accent-fg"
+          ? "h-16 w-16 rounded-full border-fg/40 bg-fg text-sm text-accent-fg"
           : small
-            ? "h-10 min-w-10 rounded-md border-fg/20 bg-bg/70 px-2 text-[11px]"
-            : "h-11 min-w-14 rounded-md border-fg/25 bg-bg/70 px-3 text-xs"
+            ? "h-9 min-w-9 rounded-md border-fg/20 bg-bg/70 px-2 text-[11px]"
+            : "h-10 min-w-12 rounded-md border-fg/25 bg-bg/70 px-3 text-xs"
       }`}
       onPointerDown={(e) => {
         e.preventDefault();

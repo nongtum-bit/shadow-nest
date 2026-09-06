@@ -159,16 +159,16 @@ function mmFromBoxes(boxes: BoxSpec[]): LevelDef["minimap"] {
 }
 
 function dockyard(): LevelDef {
-  const wood = 0x3d3428;
-  const metal = 0x3a4044;
-  const ware = 0x4a4e46;
-  const rust = 0x6b3a32;
-  const teal = 0x2f4a44;
-  const navy = 0x3d4a5c;
+  const wood = 0x6e5c48;
+  const metal = 0x6e787c;
+  const ware = 0x7a8278;
+  const rust = 0xb45a48;
+  const teal = 0x4c7e74;
+  const navy = 0x5a6e8a;
   const boxes: BoxSpec[] = [];
   const lights: LightSpec[] = [];
 
-  boxes.push(box(0, 0, 88, 92, 0.2, 0x1a2224, -0.2, { collide: true }));
+  boxes.push(box(0, 0, 88, 92, 0.2, 0x4a5248, -0.2, { collide: true }));
   boxes.push(box(0, 4, 46, 62, 0.28, wood, 0));
 
   boxes.push(...building(-16, 6, 14, 16, 6.4, ware, "e"));
@@ -207,7 +207,7 @@ function dockyard(): LevelDef {
     [0, 10],
   ] as [number, number][]) {
     boxes.push(box(x, z, 0.28, 0.28, 5.2, 0x2a2e30));
-    lights.push({ x, y: 4.6, z, color: 0xff9a4a, intensity: 2.2, distance: 16 });
+    lights.push({ x, y: 4.6, z, color: 0xffb060, intensity: 3.4, distance: 22 });
   }
 
   const enemies: EnemySpec[] = [
@@ -229,17 +229,17 @@ function dockyard(): LevelDef {
       "หัวหน้าเครือข่ายลักลอบอาวุธมาประชุมที่คลังด้านทิศใต้ ขึ้นหอเครนแล้วรอจังหวะ เก็บแฟ้มจากลัง แล้วถอนตัวที่เรือด้านตะวันตก",
     objectives: ["กำจัดเป้าหมายสำคัญในสำนักงานคลัง", "เก็บแฟ้มข่าวกรอง 2 ชิ้น", "ถอนตัวที่เรือด้านตะวันตก"],
     nestHint: "หอซุ่มทิศตะวันออกมองเห็นลานกลางและทางเดินของเป้าหมาย",
-    fog: 0x1a2830,
-    fogNear: 24,
-    fogFar: 96,
-    hemiSky: 0x6a8a98,
-    hemiGround: 0x2a3432,
-    sunColor: 0xffe0b0,
-    sunIntensity: 0.95,
+    fog: 0x5a6e78,
+    fogNear: 40,
+    fogFar: 130,
+    hemiSky: 0xb0c8d4,
+    hemiGround: 0x4a5850,
+    sunColor: 0xffe8c8,
+    sunIntensity: 1.25,
     sunDir: [0.35, 0.82, 0.28],
     groundColor: 0x1a2224,
     bounds: { minX: -40, maxX: 40, minZ: -40, maxZ: 40 },
-    spawn: { x: 0, y: 0.35, z: 34, yaw: 0 },
+    spawn: { x: 0, y: 0.35, z: 26, yaw: 0.18 },
     extract: { x: -22, z: -24, r: 4.2 },
     intel: [
       { x: 6, y: 1.4, z: -6 },
@@ -340,17 +340,17 @@ function villa(): LevelDef {
       "นายหน้าอาวุธกำลังดื่มบนระเบียงทิศตะวันตก ขึ้นดาดฟ้าวิลล่าหรือหอสวนแล้วรอให้เขาเดินออก แฟ้มอยู่ในห้องชั้นล่าง ถอนตัวที่ประตูตะวันตก",
     objectives: ["กำจัดเป้าหมายบนระเบียง", "เก็บแฟ้มจากในวิลล่า", "ถอนตัวที่ประตูสวนด้านตะวันตก"],
     nestHint: "ดาดฟ้าวิลล่าและหอสวนทิศตะวันตกเฉียงเหนือเป็นจุดซุ่มหลัก",
-    fog: 0x1e2a30,
-    fogNear: 26,
-    fogFar: 108,
-    hemiSky: 0x7a96a4,
-    hemiGround: 0x2c382c,
-    sunColor: 0xe8eef8,
-    sunIntensity: 1.05,
+    fog: 0x4a5c64,
+    fogNear: 38,
+    fogFar: 130,
+    hemiSky: 0xb8c8d0,
+    hemiGround: 0x4a5848,
+    sunColor: 0xf0f4ff,
+    sunIntensity: 1.3,
     sunDir: [-0.2, 0.9, 0.25],
     groundColor: 0x2c3a2e,
     bounds: { minX: -38, maxX: 38, minZ: -38, maxZ: 38 },
-    spawn: { x: 0, y: 0.2, z: 34, yaw: 0 },
+    spawn: { x: 0, y: 0.2, z: 26, yaw: 0.12 },
     extract: { x: -30, z: 0, r: 4.4 },
     intel: [
       { x: 2, y: 1.1, z: -4 },
@@ -439,17 +439,17 @@ function outpost(): LevelDef {
       "ผู้บัญชาการกำลังตรวจบังเกอร์ทิศตะวันออก ขึ้นหอวิทยุกลางลานจะเห็นทั้งลาน เก็บแผนที่จากบังเกอร์แล้วถอนตัวช่องรั้วทิศเหนือ",
     objectives: ["กำจัดผู้บัญชาการที่บังเกอร์", "เก็บแผนที่ปฏิบัติการ", "ถอนตัวช่องรั้วด้านเหนือ"],
     nestHint: "หอวิทยุสูงกลางลานเป็นรังซุ่มที่ดีที่สุดของทั้งปฏิบัติการ",
-    fog: 0x3a2e22,
-    fogNear: 24,
-    fogFar: 108,
-    hemiSky: 0xb89060,
-    hemiGround: 0x4a3a28,
+    fog: 0x6a5840,
+    fogNear: 36,
+    fogFar: 130,
+    hemiSky: 0xe0b878,
+    hemiGround: 0x6a5840,
     sunColor: 0xffc090,
-    sunIntensity: 1.15,
+    sunIntensity: 1.4,
     sunDir: [-0.55, 0.5, 0.35],
     groundColor: 0x8a7a5c,
     bounds: { minX: -42, maxX: 42, minZ: -42, maxZ: 42 },
-    spawn: { x: 0, y: 0.2, z: 34, yaw: 0 },
+    spawn: { x: 0, y: 0.2, z: 26, yaw: 0.1 },
     extract: { x: 0, z: -34, r: 4.6 },
     intel: [
       { x: 18, y: 1.1, z: 8 },
