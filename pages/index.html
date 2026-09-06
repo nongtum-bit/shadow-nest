@@ -3,16 +3,30 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <title>SHADOW NEST</title>
     <meta name="description" content="Low-poly spy FPS — hide, perch, and take the shot." />
     <meta name="theme-color" content="#090b0d" />
-    <link rel="icon" type="image/svg+xml" href="/shadow-nest/favicon.svg" />
+    <base href="/shadow-nest/" />
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap"
     />
+    <style>
+      html,
+      body,
+      #root {
+        min-height: 100%;
+        height: 100%;
+        margin: 0;
+        background: #090b0d;
+        color: #e8ebe6;
+        font-family: "IBM Plex Sans Thai", system-ui, sans-serif;
+      }
+    </style>
   </head>
   <body class="bg-bg text-fg">
     <div id="root"></div>
