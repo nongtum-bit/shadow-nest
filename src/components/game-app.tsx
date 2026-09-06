@@ -4,6 +4,28 @@ import type { ShadowNestGame } from "@/game/engine";
 import { LEVELS, useGame } from "@/game/store";
 import type { HudSnapshot } from "@/game/types";
 
+function useLandscape() {
+  const [land, setLand] = useState(() =>
+    typeof window === "undefined" ? true : window.innerWidth >= window.innerHeight,
+  );
+  useEffect(() => {
+    const apply = () => setLand(window.innerWidth >= window.innerHeight);
+    apply();
+    window.addEventListener("resize", apply);
+    window.addEventListener("orientationchange", apply);
+    return () => {
+      window.removeEventListener("resize", apply);
+      window.removeEventListener("orientationchange", apply);
+    };
+  }, []);
+  return land;
+}
+
+function lockLandscape() {
+  const o = screen.orientation as ScreenOrientation & { lock?: (mode: string) => Promise<void> };
+  void o.lock?.("landscape").catch(() => undefined);
+}
+
 export function GameApp() {
   const screen = useGame((s) => s.screen);
   useEffect(() => {
@@ -116,7 +138,14 @@ function MenuView() {
           </ul>
           <p className="mt-4 text-sm text-accent">{L.nestHint}</p>
           <div className="mt-8">
-            <Primary onClick={deploy}>Deploy</Primary>
+            <Primary
+              onClick={() => {
+                lockLandscape();
+                deploy();
+              }}
+            >
+              Deploy
+            </Primary>
           </div>
         </main>
       )}
@@ -130,7 +159,7 @@ function MenuView() {
             <Row k="1 / 2" v="สลับปืนสั้นเก็บเสียง กับสไนเปอร์" />
             <Row k="R" v="บรรจุกระสุน · E ปิดเงียบจากด้านหลัง / เก็บแฟ้ม" />
             <Row k="จุดซุ่ม" v="ขึ้นหอหรือดาดฟ้า ย่อหลังกำแพง แล้วเล็งหัว" />
-            <Row k="เป้าหมาย" v="กำจัด HVT เก็บข่าวกรอง แล้วเข้าโซนถอนตัว" />
+            <Row k="มือถือ" v="หมุนจอเป็นแนวนอน · จอยซ้าย เล็งขวา ปุ่มยิงขวาล่าง" />
           </dl>
           <div className="mt-8">
             <Primary onClick={() => setScreen("missions")}>เลือกพื้นที่</Primary>
@@ -162,9 +191,11 @@ function PlayView() {
   const setScreen = useGame((s) => s.setScreen);
   const [touch, setTouch] = useState(false);
   const [session, setSession] = useState(0);
+  const landscape = useLandscape();
 
   useEffect(() => {
     setTouch(window.matchMedia("(pointer: coarse)").matches);
+    lockLandscape();
   }, []);
 
   useEffect(() => {
@@ -216,7 +247,7 @@ function PlayView() {
         onClick={onCanvasClick}
         onContextMenu={(e) => e.preventDefault()}
       />
-      {hud && screen === "playing" && <Hud hud={hud} />}
+      {hud && screen === "playing" && <Hud hud={hud} compact={touch} />}
       {hud && screen === "playing" && hud.scope && <Scope />}
       {screen === "playing" && !locked && !touch && (
         <button
@@ -229,7 +260,8 @@ function PlayView() {
           </span>
         </button>
       )}
-      {touch && screen === "playing" && <TouchPad gameRef={gameRef} />}
+      {touch && screen === "playing" && !landscape && <RotatePrompt />}
+      {touch && screen === "playing" && landscape && <TouchPad gameRef={gameRef} />}
       {(screen === "paused" || screen === "win" || screen === "lose") && (
         <div className="absolute inset-0 z-30 flex items-center justify-center bg-bg/70 px-5">
           <div className="panel w-full max-w-md rounded-xl p-6">
@@ -291,7 +323,7 @@ function PlayView() {
           </div>
         </div>
       )}
-      <div className="pointer-events-auto absolute top-4 right-4 z-40 flex gap-2">
+      <div className="pointer-events-auto absolute top-[max(0.5rem,env(safe-area-inset-top))] right-[max(0.5rem,env(safe-area-inset-right))] z-40 flex gap-2">
         <IconBtn label={muted ? "เปิดเสียง" : "ปิดเสียง"} onClick={toggleMute}>
           {muted ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}
         </IconBtn>
@@ -305,7 +337,7 @@ function PlayView() {
   );
 }
 
-function Hud({ hud }: { hud: HudSnapshot }) {
+function Hud({ hud, compact }: { hud: HudSnapshot; compact: boolean }) {
   return (
     <div className="pointer-events-none absolute inset-0 z-10">
       {!hud.scope && (
@@ -324,6 +356,58 @@ function Hud({ hud }: { hud: HudSnapshot }) {
           }}
         />
       )}
+      {compact ? <HudCompact hud={hud} /> : <HudDesktop hud={hud} />}
+      {(hud.takedownReady || hud.interactReady) && (
+        <div className="absolute bottom-[28%] left-1/2 -translate-x-1/2 hud-chip px-3 py-1.5 text-sm">
+          {hud.takedownReady ? "E ปิดเงียบ" : "E เก็บแฟ้ม"}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HudCompact({ hud }: { hud: HudSnapshot }) {
+  return (
+    <div className="absolute inset-x-0 top-0 px-3 pt-[max(0.4rem,env(safe-area-inset-top))] pr-28">
+      <div className="flex items-center gap-2">
+        <div className="hud-chip min-w-0 flex-1 px-2.5 py-1">
+          <p className="truncate text-xs leading-tight">{hud.objective}</p>
+        </div>
+        {hud.nest && (
+          <div className="hud-chip px-2 py-1 text-[10px] tracking-widest text-accent uppercase">ซุ่ม</div>
+        )}
+      </div>
+      <div className="mt-1 flex items-center gap-2">
+        <div className="hud-chip flex items-center gap-2 px-2.5 py-1">
+          <span className="text-[10px] text-muted">HP</span>
+          <div className="h-1.5 w-20 overflow-hidden rounded-full bg-surface-2">
+            <div className="h-full bg-fg" style={{ width: `${hud.health}%` }} />
+          </div>
+          <span className="font-display text-sm tabular-nums leading-none">
+            {hud.mag}
+            <span className="text-[10px] text-muted">/{hud.reserve}</span>
+          </span>
+        </div>
+        <div className="hud-chip flex items-center gap-2 px-2 py-1">
+          <span className="text-[10px] text-muted">ตรวจ</span>
+          <div className="h-1.5 w-16 overflow-hidden rounded-full bg-surface-2">
+            <div
+              className={`h-full ${hud.spotted ? "bg-danger" : "bg-accent"}`}
+              style={{ width: `${Math.round(hud.suspicion * 100)}%` }}
+            />
+          </div>
+          <span className="text-[10px] text-muted tabular-nums">
+            {hud.enemiesAlive} · {hud.intelGot}/{hud.intelNeed}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HudDesktop({ hud }: { hud: HudSnapshot }) {
+  return (
+    <>
       <div className="absolute top-4 left-4 right-16 flex flex-wrap items-start gap-2">
         <div className="hud-chip px-3 py-2">
           <p className="font-display text-[10px] tracking-[0.22em] text-muted uppercase">Objective</p>
@@ -368,12 +452,7 @@ function Hud({ hud }: { hud: HudSnapshot }) {
           </p>
         </div>
       </div>
-      {(hud.takedownReady || hud.interactReady) && (
-        <div className="absolute bottom-28 left-1/2 -translate-x-1/2 hud-chip px-3 py-1.5 text-sm">
-          {hud.takedownReady ? "E ปิดเงียบ" : "E เก็บแฟ้ม"}
-        </div>
-      )}
-    </div>
+    </>
   );
 }
 
@@ -438,6 +517,19 @@ function Scope() {
   );
 }
 
+function RotatePrompt() {
+  useEffect(() => {
+    lockLandscape();
+  }, []);
+  return (
+    <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-bg/80 px-8 text-center">
+      <div className="mb-4 size-16 rounded-2xl border border-fg/25" style={{ transform: "rotate(90deg)" }} />
+      <p className="font-display text-3xl font-semibold tracking-wide">หมุนจอเป็นแนวนอน</p>
+      <p className="mt-2 max-w-xs text-sm text-muted">เกมนี้เล่นแนวนอน จะได้เล็งและซุ่มได้ชัด ไม่ทับปุ่ม</p>
+    </div>
+  );
+}
+
 function TouchPad({ gameRef }: { gameRef: RefObject<ShadowNestGame | null> }) {
   const moveId = useRef<number | null>(null);
   const lookId = useRef<number | null>(null);
@@ -454,7 +546,7 @@ function TouchPad({ gameRef }: { gameRef: RefObject<ShadowNestGame | null> }) {
   return (
     <div className="pointer-events-none absolute inset-0 z-20">
       <div
-        className="pointer-events-auto absolute bottom-4 left-4 h-36 w-36 rounded-full border border-fg/15 bg-bg/30"
+        className="pointer-events-auto absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-[max(0.75rem,env(safe-area-inset-left))] h-24 w-24 rounded-full border border-fg/25 bg-bg/40"
         onPointerDown={(e) => {
           (e.target as HTMLElement).setPointerCapture(e.pointerId);
           moveId.current = e.pointerId;
@@ -462,8 +554,8 @@ function TouchPad({ gameRef }: { gameRef: RefObject<ShadowNestGame | null> }) {
         }}
         onPointerMove={(e) => {
           if (e.pointerId !== moveId.current) return;
-          const dx = (e.clientX - origin.current.x) / 46;
-          const dy = (e.clientY - origin.current.y) / 46;
+          const dx = (e.clientX - origin.current.x) / 40;
+          const dy = (e.clientY - origin.current.y) / 40;
           const m = Math.hypot(dx, dy) || 1;
           const k = Math.min(1, m);
           setMove((dx / m) * k, (-dy / m) * k);
@@ -478,7 +570,7 @@ function TouchPad({ gameRef }: { gameRef: RefObject<ShadowNestGame | null> }) {
         }}
       />
       <div
-        className="pointer-events-auto absolute inset-y-16 right-0 w-1/2"
+        className="pointer-events-auto absolute inset-y-14 right-24 left-[32%]"
         onPointerDown={(e) => {
           (e.target as HTMLElement).setPointerCapture(e.pointerId);
           lookId.current = e.pointerId;
@@ -496,9 +588,10 @@ function TouchPad({ gameRef }: { gameRef: RefObject<ShadowNestGame | null> }) {
           lookId.current = null;
         }}
       />
-      <div className="pointer-events-auto absolute right-4 bottom-6 flex flex-col gap-2">
+      <div className="pointer-events-auto absolute right-[max(0.6rem,env(safe-area-inset-right))] bottom-[max(0.6rem,env(safe-area-inset-bottom))] flex flex-col items-end gap-1.5">
         <TouchBtn
           label="ยิง"
+          fire
           onDown={() => {
             const g = gameRef.current;
             if (g) g.input.touchFire = true;
@@ -508,18 +601,18 @@ function TouchPad({ gameRef }: { gameRef: RefObject<ShadowNestGame | null> }) {
             if (g) g.input.touchFire = false;
           }}
         />
-        <TouchBtn
-          label="เล็ง"
-          onDown={() => {
-            const g = gameRef.current;
-            if (g) g.input.touchAds = true;
-          }}
-          onUp={() => {
-            const g = gameRef.current;
-            if (g) g.input.touchAds = false;
-          }}
-        />
-        <div className="flex gap-2">
+        <div className="flex gap-1.5">
+          <TouchBtn
+            label="เล็ง"
+            onDown={() => {
+              const g = gameRef.current;
+              if (g) g.input.touchAds = true;
+            }}
+            onUp={() => {
+              const g = gameRef.current;
+              if (g) g.input.touchAds = false;
+            }}
+          />
           <TouchBtn
             label="ย่อ"
             small
@@ -532,16 +625,16 @@ function TouchPad({ gameRef }: { gameRef: RefObject<ShadowNestGame | null> }) {
               if (g) g.input.touchCrouch = false;
             }}
           />
+        </div>
+        <div className="flex gap-1.5">
           <TouchBtn
-            label="กระโดด"
+            label="โดด"
             small
             onDown={() => {
               const g = gameRef.current;
               if (g) g.input.touchJump = true;
             }}
           />
-        </div>
-        <div className="flex gap-2">
           <TouchBtn
             label="1/2"
             small
@@ -567,18 +660,26 @@ function TouchPad({ gameRef }: { gameRef: RefObject<ShadowNestGame | null> }) {
 function TouchBtn({
   label,
   small,
+  fire,
   onDown,
   onUp,
 }: {
   label: string;
   small?: boolean;
+  fire?: boolean;
   onDown: () => void;
   onUp?: () => void;
 }) {
   return (
     <button
       type="button"
-      className={`rounded-md border border-fg/15 bg-bg/55 font-display tracking-wide ${small ? "h-11 min-w-11 px-2 text-xs" : "h-14 min-w-14 px-3 text-sm"}`}
+      className={`border font-display tracking-wide ${
+        fire
+          ? "h-14 w-14 rounded-full border-fg/40 bg-fg text-sm text-accent-fg"
+          : small
+            ? "h-10 min-w-10 rounded-md border-fg/20 bg-bg/70 px-2 text-[11px]"
+            : "h-11 min-w-14 rounded-md border-fg/25 bg-bg/70 px-3 text-xs"
+      }`}
       onPointerDown={(e) => {
         e.preventDefault();
         onDown();

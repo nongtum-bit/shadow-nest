@@ -104,6 +104,7 @@ export type ControlsProbe = {
   getPosition: () => { x: number; y: number; z: number };
   setKeys: (codes: string[]) => void;
   setSteer?: (v: number) => void;
+  getDebug?: () => Record<string, unknown>;
 };
 
 declare global {

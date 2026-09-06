@@ -190,9 +190,11 @@ export class ShadowNestGame {
       alpha: false,
     });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
-    this.renderer.setClearColor(0x090b0d);
+    this.renderer.setClearColor(0x152028);
     this.renderer.autoClear = false;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.2;
     this.renderer.shadowMap.enabled = false;
 
     this.muzzle = new THREE.PointLight(0xffcc88, 0, 6);
@@ -832,10 +834,12 @@ export class ShadowNestGame {
     this.scene.background = new THREE.Color(L.fog);
     this.scene.fog = new THREE.Fog(L.fog, L.fogNear, L.fogFar);
     this.scene.add(this.worldRoot);
+    this.renderer.setClearColor(L.fog);
 
-    const hemi = new THREE.HemisphereLight(L.hemiSky, L.hemiGround, 0.9);
+    this.worldRoot.add(new THREE.AmbientLight(0xb8c4c8, 0.28));
+    const hemi = new THREE.HemisphereLight(L.hemiSky, L.hemiGround, 1.05);
     this.worldRoot.add(hemi);
-    const sun = new THREE.DirectionalLight(L.sunColor, L.sunIntensity);
+    const sun = new THREE.DirectionalLight(L.sunColor, Math.max(0.95, L.sunIntensity * 1.25));
     sun.position.set(L.sunDir[0] * 40, L.sunDir[1] * 40, L.sunDir[2] * 40);
     this.worldRoot.add(sun);
 
@@ -856,7 +860,7 @@ export class ShadowNestGame {
     }
 
     for (const l of L.lights) {
-      const p = new THREE.PointLight(l.color, l.intensity, l.distance);
+      const p = new THREE.PointLight(l.color, l.intensity * 1.35, l.distance * 1.2);
       p.position.set(l.x, l.y, l.z);
       this.worldRoot.add(p);
       const bulb = new THREE.Mesh(
@@ -1082,6 +1086,13 @@ export class ShadowNestGame {
       getYaw: () => this.yaw,
       getSpeed: () => Math.hypot(this.vel.x, this.vel.z),
       getPosition: () => ({ x: this.pos.x, y: this.pos.y, z: this.pos.z }),
+      getDebug: () => ({
+        boxes: this.level.boxes.length,
+        children: this.worldRoot.children.length,
+        fogNear: (this.scene.fog as THREE.Fog | null)?.near ?? null,
+        cam: [this.cam.position.x, this.cam.position.y, this.cam.position.z],
+        fov: this.cam.fov,
+      }),
       setKeys: (codes: string[]) => {
         this.input.setKeys(codes);
       },
