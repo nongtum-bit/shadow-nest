@@ -179,6 +179,7 @@ export class ShadowNestGame {
 
   private unsubLock: (() => void) | null = null;
   private onResize: (() => void) | null = null;
+  private ro: ResizeObserver | null = null;
 
   constructor(canvas: HTMLCanvasElement, hooks: GameHooks) {
     this.canvas = canvas;
@@ -216,6 +217,8 @@ export class ShadowNestGame {
     window.addEventListener("resize", this.onResize);
     window.addEventListener("orientationchange", this.onResize);
     window.visualViewport?.addEventListener("resize", this.onResize);
+    this.ro = new ResizeObserver(() => this.fit());
+    this.ro.observe(canvas);
   }
 
   start(levelIndex: number) {
@@ -281,6 +284,8 @@ export class ShadowNestGame {
     this.input.detach(this.canvas);
     this.disposeWorld();
     this.renderer.dispose();
+    this.ro?.disconnect();
+    this.ro = null;
     if (this.onResize) {
       window.removeEventListener("resize", this.onResize);
       window.removeEventListener("orientationchange", this.onResize);

@@ -4,8 +4,44 @@ import type { ShadowNestGame } from "@/game/engine";
 import { LEVELS, useGame } from "@/game/store";
 import type { HudSnapshot } from "@/game/types";
 
+function isTouchDevice() {
+  return window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0;
+}
+
+function useStageBox() {
+  const [box, setBox] = useState<{ force: boolean; w: number; h: number }>(() => ({
+    force: false,
+    w: typeof window === "undefined" ? 1280 : window.innerWidth,
+    h: typeof window === "undefined" ? 720 : window.innerHeight,
+  }));
+
+  useEffect(() => {
+    const apply = () => {
+      const vv = window.visualViewport;
+      const pw = Math.round(vv?.width ?? window.innerWidth);
+      const ph = Math.round(vv?.height ?? window.innerHeight);
+      const touch = isTouchDevice();
+      const portrait = ph > pw;
+      if (touch && portrait) setBox({ force: true, w: ph, h: pw });
+      else setBox({ force: false, w: pw, h: ph });
+    };
+    apply();
+    window.addEventListener("resize", apply);
+    window.addEventListener("orientationchange", apply);
+    window.visualViewport?.addEventListener("resize", apply);
+    return () => {
+      window.removeEventListener("resize", apply);
+      window.removeEventListener("orientationchange", apply);
+      window.visualViewport?.removeEventListener("resize", apply);
+    };
+  }, []);
+
+  return box;
+}
+
 export function GameApp() {
   const screen = useGame((s) => s.screen);
+  const box = useStageBox();
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
     if (q.has("qa")) {
@@ -13,8 +49,24 @@ export function GameApp() {
       useGame.setState({ mission: i, screen: "playing" });
     }
   }, []);
+
+  const stageStyle = box.force
+    ? {
+        position: "fixed" as const,
+        top: 0,
+        left: box.h,
+        width: box.w,
+        height: box.h,
+        transform: "rotate(90deg)",
+        transformOrigin: "top left",
+      }
+    : undefined;
+
   return (
-    <div className="relative h-dvh w-full overflow-hidden bg-bg text-fg">
+    <div
+      className="overflow-hidden bg-bg text-fg"
+      style={stageStyle ?? { position: "relative", height: "100dvh", width: "100%" }}
+    >
       {screen === "playing" || screen === "paused" || screen === "win" || screen === "lose" ? (
         <PlayView />
       ) : (
@@ -164,7 +216,7 @@ function PlayView() {
   const [session, setSession] = useState(0);
 
   useEffect(() => {
-    setTouch(window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0);
+    setTouch(isTouchDevice());
   }, []);
 
   useEffect(() => {
