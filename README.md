@@ -2,7 +2,10 @@
 
 เกมยิงมุมมองบุคคลที่หนึ่งสายลับแบบ low-poly — ซุ่มบนหอ แอบในเงา แล้วยิงนัดเดียวจบ
 
-Low-poly spy FPS in the browser. Hide, perch, take the shot.
+**เล่นเกม:** [nongtum-bit.github.io/shadow-nest](https://nongtum-bit.github.io/shadow-nest/)
+
+**ซอร์ส:** [github.com/nongtum-bit/shadow-nest](https://github.com/nongtum-bit/shadow-nest)
+
 
 ## ด่าน
 
