@@ -67,6 +67,11 @@ export function GameApp() {
     return null;
   };
 
+  const toLocal = (cx: number, cy: number) => {
+    if (!land.force) return { x: cx, y: cy };
+    return { x: land.w - cy, y: cx };
+  };
+
   const applyHit = (el: HTMLElement, type: "down" | "move" | "up", x: number, y: number) => {
     const hit = el.dataset.hit;
     const g = liveGame.current;
@@ -77,10 +82,10 @@ export function GameApp() {
         return;
       }
       const r = el.getBoundingClientRect();
-      const px = x - (r.left + r.width / 2);
-      const py = y - (r.top + r.height / 2);
-      let mx = py / 38;
-      let my = -px / 38;
+      const c = toLocal(r.left + r.width / 2, r.top + r.height / 2);
+      const p = toLocal(x, y);
+      const mx = (p.x - c.x) / 38;
+      const my = -(p.y - c.y) / 38;
       const m = Math.hypot(mx, my);
       if (m < 0.14) {
         g.input.touchMoveX = 0;
@@ -94,8 +99,10 @@ export function GameApp() {
     }
     if (hit === "look" && g) {
       if (type === "move" && hold.current) {
-        let dx = x - hold.current.lx;
-        let dy = y - hold.current.ly;
+        const a = toLocal(hold.current.lx, hold.current.ly);
+        const b = toLocal(x, y);
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
         const jump = Math.hypot(dx, dy);
         if (jump > 64) {
           hold.current.lx = x;
@@ -104,8 +111,8 @@ export function GameApp() {
         }
         dx = Math.max(-18, Math.min(18, dx));
         dy = Math.max(-18, Math.min(18, dy));
-        g.input.touchLookX += dy;
-        g.input.touchLookY += -dx;
+        g.input.touchLookX += dx;
+        g.input.touchLookY += dy;
         hold.current.lx = x;
         hold.current.ly = y;
       }
@@ -145,10 +152,10 @@ export function GameApp() {
     ? {
         position: "absolute" as const,
         top: 0,
-        left: land.h,
+        left: 0,
         width: land.w,
         height: land.h,
-        transform: "rotate(90deg)",
+        transform: `translateY(${land.w}px) rotate(-90deg)`,
         transformOrigin: "top left",
         pointerEvents: "none" as const,
       }
